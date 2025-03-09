@@ -1,5 +1,6 @@
 import pytorch_lightning as pl
 import torch
+import datetime
 
 torch.set_float32_matmul_precision('medium')
 from pytorch_lightning.loggers import WandbLogger
@@ -34,8 +35,8 @@ def train(cfg):
         filename='{epoch}-{val/brier_fde:.2f}',
         save_top_k=1,
         mode='min',  # 'min' for loss/error, 'max' for accuracy
-        dirpath=f'./unitraj_ckpt/{cfg.exp_name}'
-    )
+        dirpath=f"/data1/data_zzs/unitraj_ckpt/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}_{cfg.exp_name}_{cfg.dataset}_{cfg.method['model_name']}"
+)
 
     call_backs.append(checkpoint_callback)
 
@@ -52,16 +53,17 @@ def train(cfg):
         logger=None if cfg.debug else WandbLogger(project="unitraj", name=cfg.exp_name, id=cfg.exp_name),
         devices=1 if cfg.debug else cfg.devices,
         gradient_clip_val=cfg.method.grad_clip_norm,
-        accelerator="cpu" if cfg.debug else "gpu",
+        accelerator="gpu" if cfg.debug else "gpu",
         profiler="simple",
         strategy="auto" if cfg.debug else "ddp",
         callbacks=call_backs
     )
 
     # automatically resume training
+
     if cfg.ckpt_path is None and not cfg.debug:
         # Pattern to match all .ckpt files in the base_path recursively
-        search_pattern = os.path.join('/data1/data_zzs/unitraj_ckpt', cfg.exp_name, '**', '*.ckpt')
+        search_pattern = os.path.join('/data1/data_zzs/unitraj_ckpt', f"{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}_{cfg.exp_name}_{cfg.dataset}_{cfg.method['model_name']}", '**', '*.ckpt')
         cfg.ckpt_path = find_latest_checkpoint(search_pattern)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader, ckpt_path=cfg.ckpt_path)
