@@ -147,7 +147,6 @@ def visualize_batch_data(ax, data):
     obj_trajs_xy, obj_lw, obj_type, obj_heading = decode_obj_trajs(obj_trajs)
     obj_trajs_future_state = data['obj_trajs_future_state'][...,:2]
     all_traj = np.concatenate([obj_trajs_xy, obj_trajs_future_state], axis=-2)
-    
 
     for i in range(obj_trajs.shape[0]):
         if i == data['track_index_to_predict']:
@@ -256,23 +255,20 @@ def concatenate_varying(image_list, column_counts):
 
     return final_image
 
-"""可视化预测结果包括历史轨迹、实际未来轨迹和预测的多个可能轨迹"""
+
 def visualize_prediction(batch, prediction, draw_index=0):
-        
     def draw_line_with_mask(point1, point2, color, line_width=4):
-        """绘制带掩码的线段"""
         ax.plot([point1[0], point2[0]], [point1[1], point2[1]], linewidth=line_width, color=color)
 
     def interpolate_color(t, total_t):
-        # Start is green, end is blue """非自车轨迹的颜色插值(绿到蓝)"""
+        # Start is green, end is blue
         return (0, 1 - t / total_t, t / total_t)
 
     def interpolate_color_ego(t, total_t):
-        # Start is red, end is blue """自车轨迹的颜色插值(红到蓝)"""
+        # Start is red, end is blue
         return (1 - t / total_t, 0, t / total_t)
 
     def draw_trajectory(trajectory, line_width, ego=False):
-        """绘制轨迹，支持自车和其他车辆的不同颜色方案"""
         total_t = len(trajectory)
         for t in range(total_t - 1):
             if ego:
@@ -283,7 +279,7 @@ def visualize_prediction(batch, prediction, draw_index=0):
                 color = interpolate_color(t, total_t)
                 if trajectory[t, 0] and trajectory[t + 1, 0]:
                     draw_line_with_mask(trajectory[t], trajectory[t + 1], color=color, line_width=line_width)
-    # 提取数据
+
     batch = batch['input_dict']
     map_lanes = batch['map_polylines'][draw_index].cpu().numpy()
     map_mask = batch['map_polylines_mask'][draw_index].cpu().numpy()
@@ -297,11 +293,11 @@ def visualize_prediction(batch, prediction, draw_index=0):
     map_xy = map_lanes[..., :2]
 
     map_type = map_lanes[..., 0, -20:]
-    ## 创建图像
+
     # draw map
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
-    # Plot the map with mask check # 绘制地图
+    # Plot the map with mask check
     for idx, lane in enumerate(map_xy):
         lane_type = map_type[idx]
         # convert onehot to index
@@ -312,17 +308,17 @@ def visualize_prediction(batch, prediction, draw_index=0):
             if map_mask[idx, i] and map_mask[idx, i + 1]:
                 draw_line_with_mask(lane[i], lane[i + 1], color='grey', line_width=1.5)
 
-    # draw past trajectory # 绘制历史轨迹
+    # draw past trajectory
     for idx, traj in enumerate(past_traj):
         draw_trajectory(traj, line_width=2)
 
-    # draw future trajectory # 绘制实际未来轨迹
+    # draw future trajectory
     for idx, traj in enumerate(future_traj):
         draw_trajectory(traj, line_width=2)
 
-    # # 绘制预测的多个可能未来轨迹 predicted future trajectory is (n,future_len,2) with n possible future trajectories, visualize all of them
+    # predicted future trajectory is (n,future_len,2) with n possible future trajectories, visualize all of them
     for idx, traj in enumerate(pred_future_traj):
-        # # 使用概率值确定颜色 calculate color based on probability
+        # calculate color based on probability
         color = cm.hot(pred_future_prob[idx])
         for i in range(len(traj) - 1):
             draw_line_with_mask(traj[i], traj[i + 1], color=color, line_width=2)
