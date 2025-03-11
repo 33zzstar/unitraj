@@ -241,8 +241,8 @@ def process_argo2_data_with_scenario_parquet_my(src_file,
         'slice_id': None,
         'city_name': city_name}
     
-    if output_path is not None:
-        os.makedirs(os.path.join(output_path, f'{scenario_id}'), exist_ok=True)
+    # if output_path is not None:
+    #     os.makedirs(os.path.join(output_path, f'{scenario_id}'), exist_ok=True)
     ###2.时间戳处理
     timestamps = scenario_data['metadata']['ts']
     timesteps = list(range(len(scenario_data['metadata']['ts'])))
