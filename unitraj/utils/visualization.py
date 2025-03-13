@@ -2,8 +2,16 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
+import os ,sys
+parentdir = '/zzs/UniTraj/unitraj/'
 
-
+sys.path.insert(0,parentdir) 
+from Bernstein import (
+    bernstein_poly,
+    bernstein_curve,
+    fit_bernstein_curve,
+    apply_kalman_filter
+)
 # input
 # ego: (16,3)
 # agents: (16,n,3)

@@ -1,10 +1,14 @@
 # exp setting
 # exp_name: 'test' # name that will be used in wandb
-ckpt_path: null # checkpoint path, used for evaluation
+# ckpt_path: null # checkpoint path, used for evaluation
 exp_name: 'test' # name that will be used in wandb
-# ckpt_path: '/data1/data_zzs/unitraj_ckpt/20250310-121103_train_AG2_MTR/epoch=30-val/brier_fde=1.43.ckpt' # checkpoint path, used for evaluation
+debug: False # True wandb debug mode, will use cpu only 
+
+# ckpt_path: null # checkpoint path, used for evaluation
+# exp_name: '111' # name that will be used in wandb
+ckpt_path: '/data1/data_zzs/unitraj_ckpt/20250310-121103_train_AG2_MTR/epoch=30-val/brier_fde=1.43.ckpt' # checkpoint path, used for evaluation
 seed: 42 # random seed
-debug: False # debug mode, will use cpu only 
+# debug: False # debug mode, will use cpu only 
 devices: [ 3 ] # gpu ids
 
 # data related
