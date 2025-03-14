@@ -353,27 +353,42 @@ def visualize_prediction(batch, prediction, draw_index=0):
     
 
     def calculate_view_range():
-        #获取地图中心和图片尺寸
-        # 获取自车预测轨迹的所有点
-        pred_points = pred_future_traj.reshape(-1, 2)
+        """计算合适的视野范围，以自车轨迹为重点"""
+        # 收集自车所有相关轨迹点
+        ego_points = []
+        
+        # 添加历史轨迹点
+        ego_hist_traj = past_traj[ego_index, :, :2]
+        ego_points.extend(ego_hist_traj[ego_hist_traj[:, 0] != 0])
+        
+        # 添加真实未来轨迹点
+        ego_future_traj = future_traj[ego_index, :, :2]
+        ego_points.extend(ego_future_traj[ego_future_traj[:, 0] != 0])
+        
+        # 添加预测轨迹点
+        pred_points = pred_future_traj[max_prob_idx, :, :2]
+        ego_points.extend(pred_points[pred_points[:, 0] != 0])
+        
+        # 转换为numpy数组
+        ego_points = np.array(ego_points)
         
         # 计算自车轨迹的范围
-        max_x = np.max(pred_points[:, 0])
-        min_x = np.min(pred_points[:, 0])
-        max_y = np.max(pred_points[:, 1])
-        min_y = np.min(pred_points[:, 1])
+        max_x = np.max(ego_points[:, 0])
+        min_x = np.min(ego_points[:, 0])
+        max_y = np.max(ego_points[:, 1])
+        min_y = np.min(ego_points[:, 1])
         
-        # 计算中心点（使用自车最后位置）
+        # 计算中心点（使用自车当前位置）
         center_x = ego_last_pos[0]
         center_y = ego_last_pos[1]
         
         # 计算需要的视野范围（考虑边距）
-        margin = 20  # 额外边距（米）
+        margin = 15  # 减小边距到15米
         range_x = max(abs(max_x - center_x), abs(min_x - center_x)) + margin
         range_y = max(abs(max_y - center_y), abs(min_y - center_y)) + margin
         
-        # 取较大的范围确保视野是正方形
-        view_range = max(range_x, range_y)
+        # 取较大的范围确保视野是正方形，但设置上限
+        view_range = min(max(range_x, range_y), 15)  # 限制最大视野范围为35米
         
         return center_x, center_y, view_range
     
@@ -399,6 +414,7 @@ def visualize_prediction(batch, prediction, draw_index=0):
     # draw map
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
+    first_map_element = True  # 添加标志变量
     # Plot the map with mask check
     for idx, lane in enumerate(map_xy):
 
@@ -408,12 +424,17 @@ def visualize_prediction(batch, prediction, draw_index=0):
         if lane_type in [1, 2, 3]:
             continue
         for i in range(len(lane) - 1):
-            if idx == 0:  # 只在第一条车道添加图例
-                draw_line_with_mask(lane[i], lane[i + 1], color='grey', line_width=1.5, 
-                            label='Map Elements')
             if map_mask[idx, i] and map_mask[idx, i + 1]:
-                draw_line_with_mask(lane[i], lane[i + 1], color='grey', line_width=1.5)
-
+                if first_map_element:  # 只有第一次绘制时添加图例
+                    draw_line_with_mask(lane[i], lane[i + 1], 
+                                    color='grey', 
+                                    line_width=1.5,
+                                    label='Map Elements')
+                    first_map_element = False  # 设置标志为False，之后不再添加图例
+                else:
+                    draw_line_with_mask(lane[i], lane[i + 1], 
+                                    color='grey', 
+                                    line_width=1.5)
     # 绘制历史轨迹
     for idx, traj in enumerate(past_traj[:,:,:2]):
         if idx == ego_index:
@@ -486,7 +507,14 @@ def visualize_prediction(batch, prediction, draw_index=0):
     #     for i in range(len(traj) - 1):
     #         draw_line_with_mask(traj[i], traj[i + 1], color=color, line_width=0.5)
     
-
+            # 在右上角添加图例
+    ax.legend(loc='upper right', 
+             fontsize=8,
+             bbox_to_anchor=(1.15, 1.0),
+             frameon=True,
+             fancybox=True,
+             shadow=True)
+    
     # 计算视野范围
     center_x, center_y, view_range = calculate_view_range()
     
@@ -499,13 +527,7 @@ def visualize_prediction(batch, prediction, draw_index=0):
     ax.axis('off')  # 隐藏坐标轴
     ax.grid(True)  # 显示网格
 
-        # 在右上角添加图例
-    ax.legend(loc='upper right', 
-             fontsize=8,
-             bbox_to_anchor=(1.15, 1.0),
-             frameon=True,
-             fancybox=True,
-             shadow=True)
+
 
 
 
@@ -513,7 +535,7 @@ def visualize_prediction(batch, prediction, draw_index=0):
     # 保存路径
     save_path = "/data1/data_zzs/plt_sample/" 
     #子目录
-    save_commit = '3.14.7_添加图例'
+    save_commit = '3.14.10_minitrain'
     #创建完整目录
     save_dir = os.path.join(save_path)
     # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
