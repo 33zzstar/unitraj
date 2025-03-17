@@ -388,7 +388,7 @@ def visualize_prediction(batch, prediction, draw_index=0):
         range_y = max(abs(max_y - center_y), abs(min_y - center_y)) + margin
         
         # 取较大的范围确保视野是正方形，但设置上限
-        view_range = min(max(range_x, range_y), 15)  # 限制最大视野范围为35米
+        view_range = min(max(range_x, range_y), 20)  # 限制最大视野范围为35米
         
         return center_x, center_y, view_range
     
@@ -408,6 +408,8 @@ def visualize_prediction(batch, prediction, draw_index=0):
     ego_index = batch['track_index_to_predict'][draw_index].item()  # 获取自车索引
     ego_last_pos = pred_future_traj[0, 1, :2]  # 获取最后一帧位置
     map_xy = map_lanes[..., :2]
+    ego_history_traj = None
+    ego_future_traj = None
 
     map_type = map_lanes[..., 0, -20:]
 
@@ -438,12 +440,12 @@ def visualize_prediction(batch, prediction, draw_index=0):
     # 绘制历史轨迹
     for idx, traj in enumerate(past_traj[:,:,:2]):
         if idx == ego_index:
-
+            ego_history_traj = traj
             # 自车历史轨迹用黑色，使用点表示
-            control_points, fitted_curve = fit_trajectory_to_control_points(traj)
-            if control_points is not None:
+            history_GT_control_points, fitted_curve = fit_trajectory_to_control_points(ego_history_traj)
+            if history_GT_control_points is not None:
                 # 绘制控制点
-                ax.scatter(control_points[:, 0], control_points[:, 1], 
+                ax.scatter(history_GT_control_points[:, 0], history_GT_control_points[:, 1], 
                 color='red', marker='^', s=0.3, zorder=5,
                 label='Historical Control Points')
                           
@@ -462,12 +464,13 @@ def visualize_prediction(batch, prediction, draw_index=0):
     # 绘制实际未来轨迹
     for idx, traj in enumerate(future_traj[:,:,:2]):
         if idx == ego_index:
+            ego_future_traj = traj
             # 对未来轨迹进行控制点拟合
-            control_points_future, fitted_curve_future = fit_trajectory_to_control_points(traj)
+            future_GT_control_points, fitted_curve_future = fit_trajectory_to_control_points(ego_future_traj)
             
-            if control_points_future is not None and fitted_curve_future is not None:
+            if future_GT_control_points is not None and fitted_curve_future is not None:
                 # 绘制未来轨迹的控制点 - 使用黑色
-                ax.scatter(control_points_future[:, 0], control_points_future[:, 1], 
+                ax.scatter(future_GT_control_points[:, 0], future_GT_control_points[:, 1], 
                          color='gray', marker='^', s=0.3, zorder=5,
                          label='Future Control Points')
                 
@@ -481,6 +484,8 @@ def visualize_prediction(batch, prediction, draw_index=0):
         else:
             # 其他车辆使用默认渐变色
             draw_trajectory(traj, line_width=2, color=None, ego=False)
+
+   
     
     
     # 找出概率最高的轨迹索引
@@ -547,5 +552,5 @@ def visualize_prediction(batch, prediction, draw_index=0):
 
     plt.savefig(save_path, dpi=500, bbox_inches='tight')
     # 清理图像以释放内存
-    plt.close()
-    return plt
+    # plt.close()
+    return plt,ego_history_traj,ego_future_traj,history_GT_control_points ,future_GT_control_points

@@ -10,13 +10,14 @@ ckpt_path: '/data1/data_zzs/unitraj_ckpt/20250310-121103_train_AG2_MTR/epoch=30-
 seed: 42 # random seed
 # debug: False # debug mode, will use cpu only 
 devices: [ 3 ] # gpu ids
+dataset: AG2
 
 # data related
 load_num_workers: 32 # number of workers for loading data
 # train_data_path: [ "/data1/data_zzs/dataset_unitraj_split/AG2_train" ] # list of paths to the training data
 # val_data_path: [ "/data1/data_zzs/dataset_unitraj_split/AG2_test" ] 
-train_data_path: [ "/data1/data_zzs/dataset_unitraj_split/AG2_train/AG2_train_0_dele" ] # list of paths to the training data
-val_data_path: [ "/data1/data_zzs/dataset_unitraj_split/AG2_train/AG2_train_0_dele" ] 
+train_data_path: [ "/data1/data_zzs/dataset_unitraj_split/nuscenes_mini_split/nuscenes_mini_test_split" ] # list of paths to the training data
+val_data_path: [ "/data1/data_zzs/dataset_unitraj_split/nuscenes_mini_split/nuscenes_mini_test_split" ] 
 cache_path: "/data1/data_zzs/unitraj_cache"
 max_data_num: [ null ] # maximum number of data for each training dataset, null means all data
 starting_frame: [ 0 ] # history trajectory starts at this frame for each training dataset
@@ -32,7 +33,6 @@ use_cache: False # use cache for data loading
 overwrite_cache: False # overwrite existing cache
 store_data_in_memory: False # store data in memory
 
-dataset: AG2
 # official evaluation
 nuscenes_dataroot: '/mnt/nas3_rcp_enac_u0900_vita_scratch/datasets/Prediction-Dataset/nuscenes/nuscenes_root'
 eval_nuscenes: False # whether to evaluate with nuscenes evaluation tool

@@ -9,6 +9,8 @@ import torch
 parentdir = '/zzs/mdsn/metadrive'
 
 sys.path.insert(0,parentdir) 
+
+
 from metadrive.scenario.scenario_description import MetaDriveType
 parentdir = '/zzs/mdsn/scenarionet'
 
@@ -16,6 +18,7 @@ sys.path.insert(0,parentdir)
 from scenarionet.common_utils import read_scenario, read_dataset_summary
 from torch.utils.data import Dataset
 from tqdm import tqdm
+parentdir = '/zzs/UniTraj/unitraj'
 
 from unitraj.datasets import common_utils
 from unitraj.datasets.common_utils import get_polyline_dir, find_true_segments, generate_mask, is_ddp, \
@@ -75,10 +78,10 @@ class BaseDataset(Dataset):
 
                     data_splits = [(data_path, mapping, list(data_splits[i]), dataset_name) for i in range(process_num)]
                     # save the data_splits in a tmp directory
-                    os.makedirs('tmp', exist_ok=True)
-                    for i in range(process_num):
-                        with open(os.path.join('tmp', '{}.pkl'.format(i)), 'wb') as f:
-                            pickle.dump(data_splits[i], f)
+                    # os.makedirs('tmp', exist_ok=True)
+                    # for i in range(process_num):
+                    #     with open(os.path.join('tmp', '{}.pkl'.format(i)), 'wb') as f:
+                    #         pickle.dump(data_splits[i], f)
 
                     # results = self.process_data_chunk(0)
                     with Pool(processes=process_num) as pool:
@@ -123,6 +126,8 @@ class BaseDataset(Dataset):
             for cnt, file_name in enumerate(data_list):
                 if worker_index == 0 and cnt % max(int(len(data_list) / 10), 1) == 0:
                     print(f'{cnt}/{len(data_list)} data processed', flush=True)
+                scenario = read_scenario(data_path, mapping, file_name)
+                scenario = read_scenario(data_path, mapping, file_name)
                 scenario = read_scenario(data_path, mapping, file_name)
 
                 try:
@@ -660,8 +665,10 @@ class BaseDataset(Dataset):
             center_objects_list.append(obj_trajs_full[obj_idx, current_time_index])
             track_index_to_predict_selected.append(obj_idx)
         if len(center_objects_list) == 0:
-            print(f'Warning: no center objects at time step {current_time_index}, scene_id={scene_id}')
+            # print(f'Warning: no center objects at time step {current_time_index}, scene_id={scene_id}')
             return None, []
+        # else:
+            # print(f'success')
         center_objects = np.stack(center_objects_list, axis=0)  # (num_center_objects, num_attrs)
         track_index_to_predict = np.array(track_index_to_predict_selected)
         return center_objects, track_index_to_predict
@@ -1091,11 +1098,11 @@ def split_data(cfg):
 
 
 if __name__ == '__main__':
-    from unitraj.datasets import build_dataset
-    from unitraj.utils.utils import set_seed
+    from unitraj_poly.datasets import build_dataset
+    from unitraj_poly.utils.utils import set_seed
     import io
     from PIL import Image
-    from unitraj.utils.visualization import concatenate_varying
+    from unitraj_poly.utils.visualization import concatenate_varying
 
     split_data()
     # draw_figures()
