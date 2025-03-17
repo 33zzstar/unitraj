@@ -410,6 +410,11 @@ def visualize_prediction(batch, prediction, draw_index=0):
     map_xy = map_lanes[..., :2]
     ego_history_traj = None
     ego_future_traj = None
+    # 添加控制点提取代码
+    history_control_points = batch['history_control_points'][draw_index].cpu().numpy() 
+    future_control_points = batch['future_control_points'][draw_index].cpu().numpy()
+
+
 
     map_type = map_lanes[..., 0, -20:]
 
