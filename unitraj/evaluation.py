@@ -9,7 +9,7 @@ from datasets import build_dataset
 from utils.utils import set_seed
 import hydra
 from omegaconf import OmegaConf
-
+import wandb
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def evaluation(cfg):
@@ -32,7 +32,7 @@ def evaluation(cfg):
         inference_mode=True,
         logger=None if cfg.debug else WandbLogger(project="unitraj", name=cfg.exp_name),
         devices=1,
-        accelerator="cpu" if cfg.debug else "gpu",
+        accelerator="gpu" if cfg.debug else "gpu",
         profiler="simple",
     )
 
@@ -40,4 +40,5 @@ def evaluation(cfg):
 
 
 if __name__ == '__main__':
+    wandb.init(project="unitraj")
     evaluation()

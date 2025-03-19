@@ -47,6 +47,12 @@ class AttentionWeightComputation(Function):
         :return:
             output: A float tensor with shape [total_query_num, local_size, nhead]
         """
+        index_pair_batch = index_pair_batch.to('cuda')
+        query_batch_cnt = query_batch_cnt.to('cuda')
+        key_batch_cnt = key_batch_cnt.to('cuda')
+        index_pair = index_pair.to('cuda')
+        query_features = query_features.to('cuda')
+        key_features = key_features.to('cuda')
         assert query_batch_cnt.is_contiguous()
         assert key_batch_cnt.is_contiguous()
         assert index_pair_batch.is_contiguous()
@@ -61,7 +67,13 @@ class AttentionWeightComputation(Function):
         # Need to ensure that every tensor in query features have an output.
         assert total_query_num == query_features.shape[0]
 
-        output = torch.cuda.FloatTensor(total_query_num, local_size, nhead).zero_()
+        output = torch.zeros(
+                                total_query_num, 
+                                local_size, 
+                                nhead, 
+                                dtype=torch.float32, 
+                                device='cuda'
+                            )
 
         attention_cuda.attention_weight_computation_wrapper_v2(
             b, total_query_num, local_size, total_key_num, nhead, hdim,
@@ -90,9 +102,9 @@ class AttentionWeightComputation(Function):
          index_pair, query_features, key_features) = ctx.for_backwards
 
         grad_query_features = Variable(torch.cuda.FloatTensor(
-            total_query_num, nhead, hdim).zero_())
+            total_query_num, nhead, hdim).zero_().cuda())
         grad_key_features = Variable(torch.cuda.FloatTensor(
-            total_key_num, nhead, hdim).zero_())
+            total_key_num, nhead, hdim).zero_().cuda())
 
         grad_out_data = grad_out.data.contiguous()
         attention_cuda.attention_weight_computation_grad_wrapper_v2(
@@ -151,8 +163,8 @@ class AttentionValueComputation(Function):
         # Need to ensure that every tensor in query features have an output.
         assert total_query_num == attn_weight.shape[0]
 
-        output = torch.cuda.FloatTensor(total_query_num, nhead, hdim).zero_()
-
+        #output = torch.cuda.FloatTensor(total_query_num, nhead, hdim).zero_().cuda()
+        output = torch.zeros(total_query_num, nhead, hdim, dtype=torch.float32, device="cuda")
         attention_cuda.attention_value_computation_wrapper_v2(
             b, total_query_num, local_size, total_key_num, nhead, hdim,
             query_batch_cnt, key_batch_cnt, index_pair_batch,
@@ -180,9 +192,9 @@ class AttentionValueComputation(Function):
          index_pair, attn_weight, value_features) = ctx.for_backwards
 
         grad_attn_weight = Variable(torch.cuda.FloatTensor(
-            total_query_num, local_size, nhead).zero_())
+            total_query_num, local_size, nhead).zero_().cuda())
         grad_value_features = Variable(torch.cuda.FloatTensor(
-            total_key_num, nhead, hdim).zero_())
+            total_key_num, nhead, hdim).zero_().cuda())
 
         grad_out_data = grad_out.data.contiguous()
         attention_cuda.attention_value_computation_grad_wrapper_v2(

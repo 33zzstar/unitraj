@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 import os ,sys
-parentdir = '/zzs/UniTraj/unitraj/'
+parentdir = '//zzs/UniTraj/unitraj/'
 
 sys.path.insert(0,parentdir) 
 from Bernstein import (
@@ -543,9 +543,9 @@ def visualize_prediction(batch, prediction, draw_index=0):
 
     
     # 保存路径
-    save_path = "/data1/data_zzs/plt_sample/" 
+    save_path = "//zzs/UniTraj/plt_sample" 
     #子目录
-    save_commit = '3.14.10_minitrain'
+    save_commit = '3.18.1_minitrain'
     #创建完整目录
     save_dir = os.path.join(save_path)
     # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

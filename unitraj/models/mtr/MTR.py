@@ -28,10 +28,10 @@ class MotionTransformer(BaseModel):
     def __init__(self, config):
         super(MotionTransformer, self).__init__(config)
         self.config = config
-        self.model_cfg = EasyDict(config)
-        self.pred_dicts = []
+        self.model_cfg = EasyDict(config) #提供字典功能
+        self.pred_dicts = [] #用于储存预测结果
 
-        self.model_cfg.MOTION_DECODER['CENTER_OFFSET_OF_MAP'] = self.model_cfg['center_offset_of_map']
+        self.model_cfg.MOTION_DECODER['CENTER_OFFSET_OF_MAP'] = self.model_cfg['center_offset_of_map'] 
         self.model_cfg.MOTION_DECODER['NUM_FUTURE_FRAMES'] = self.model_cfg['future_len']
         self.model_cfg.MOTION_DECODER['OBJECT_TYPE'] = self.model_cfg['object_type']
 
@@ -56,13 +56,14 @@ class MotionTransformer(BaseModel):
             output['predicted_trajectory'] = out_dict['pred_trajs']  # [B, c, T, 5] to be able to parallelize code
 
         loss, tb_dict, disp_dict = self.motion_decoder.get_loss()
+        loss = loss.mean()  # 确保loss是标量
         return output, loss
 
     def get_loss(self):
         loss, tb_dict, disp_dict = self.motion_decoder.get_loss()
 
         return loss
-
+    #学习率优化器
     def configure_optimizers(self):
         decay_steps = [x for x in self.config['learning_rate_sched']]
 
@@ -84,14 +85,20 @@ class MTREncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.model_cfg = config
-
-        # build polyline encoders
+        '''
+        in_channels ,输入特征维度
+        hidden_dim, 隐藏次层数量
+        num_layers MLP层数
+        out_channels 输出特征维度
+        '''
+        # build polyline encoders 编码交通参与者轨迹信息？
         self.agent_polyline_encoder = self.build_polyline_encoder(
             in_channels=self.model_cfg.NUM_INPUT_ATTR_AGENT + 1,
             hidden_dim=self.model_cfg.NUM_CHANNEL_IN_MLP_AGENT,
             num_layers=self.model_cfg.NUM_LAYER_IN_MLP_AGENT,
             out_channels=self.model_cfg.D_MODEL
         )
+        #编码地图上的多线段信息
         self.map_polyline_encoder = self.build_polyline_encoder(
             in_channels=self.model_cfg.NUM_INPUT_ATTR_MAP,
             hidden_dim=self.model_cfg.NUM_CHANNEL_IN_MLP_MAP,
@@ -99,9 +106,14 @@ class MTREncoder(nn.Module):
             num_pre_layers=self.model_cfg.NUM_LAYER_IN_PRE_MLP_MAP,
             out_channels=self.model_cfg.D_MODEL
         )
+        '''
+        use_local_attn 是否启用局部注意力
+        self_attn_layers 编码器层数
+        num_out_channels 输出通道数
+        '''
 
         # build transformer encoder layers
-        self.use_local_attn = self.model_cfg.get('USE_LOCAL_ATTN', False)
+        self.use_local_attn = self.model_cfg.get('USE_LOCAL_ATTN', False)  #是否启用局部注意力
         self_attn_layers = []
         for _ in range(self.model_cfg.NUM_ATTN_LAYERS):
             self_attn_layers.append(self.build_transformer_encoder_layer(
@@ -114,7 +126,7 @@ class MTREncoder(nn.Module):
 
         self.self_attn_layers = nn.ModuleList(self_attn_layers)
         self.num_out_channels = self.model_cfg.D_MODEL
-
+    #将输入的多边形数据转换为一个固定维度的特征向量
     def build_polyline_encoder(self, in_channels, hidden_dim, num_layers, num_pre_layers=1, out_channels=None):
         ret_polyline_encoder = PointNetPolylineEncoder(
             in_channels=in_channels,
@@ -168,30 +180,30 @@ class MTREncoder(nn.Module):
             x_pos (batch_size, N, 3):
         """
         assert torch.all(x_mask.sum(dim=-1) > 0)
-        batch_size, N, d_model = x.shape
+        batch_size, N, d_model = x.shape #4,832,256
+        #数据展平
+        x_stack_full = x.view(-1, d_model)  # (batch_size * N, d_model) [4*832=3328,256]
+        x_mask_stack = x_mask.view(-1)   #3328
+        x_pos_stack_full = x_pos.view(-1, 3) #[3328,3]
+        batch_idxs_full = torch.arange(batch_size).type_as(x)[:, None].repeat(1, N).view(-1).int()  # (batch_size * N) 批次的索引
 
-        x_stack_full = x.view(-1, d_model)  # (batch_size * N, d_model)
-        x_mask_stack = x_mask.view(-1)
-        x_pos_stack_full = x_pos.view(-1, 3)
-        batch_idxs_full = torch.arange(batch_size).type_as(x)[:, None].repeat(1, N).view(-1).int()  # (batch_size * N)
-
-        # filter invalid elements
+        # filter invalid elements 过滤无效 3328->3283
         x_stack = x_stack_full[x_mask_stack]
         x_pos_stack = x_pos_stack_full[x_mask_stack]
         batch_idxs = batch_idxs_full[x_mask_stack]
 
-        # knn
-        batch_offsets = get_batch_offsets(batch_idxs=batch_idxs, bs=batch_size).int()  # (batch_size + 1)
-        batch_cnt = batch_offsets[1:] - batch_offsets[:-1]
+        # knn K邻近
+        batch_offsets = get_batch_offsets(batch_idxs=batch_idxs, bs=batch_size).int()  # 4 (batch_size + 1) 记录批次起始位置
+        batch_cnt = batch_offsets[1:] - batch_offsets[:-1] #4
 
         index_pair = knn_utils.knn_batch_mlogk(
             x_pos_stack, x_pos_stack, batch_idxs, batch_offsets, num_of_neighbors
-        )  # (num_valid_elems, K)
+        )  # (num_valid_elems, K)[3283,7]
 
-        # positional encoding
+        # positional encoding 根据点的位置生成位置嵌入，利用正弦嵌入函数对二维位置 (x, y) 进行编码。
         pos_embedding = \
             position_encoding_utils.gen_sineembed_for_position(x_pos_stack[None, :, 0:2], hidden_dim=d_model)[0]
-
+        #[3283,256]
         # local attn
         output = x_stack
         for k in range(len(self.self_attn_layers)):
@@ -216,44 +228,45 @@ class MTREncoder(nn.Module):
             batch_dict:
               input_dict:
         """
-        input_dict = batch_dict['input_dict']
-        obj_trajs, obj_trajs_mask = input_dict['obj_trajs'], input_dict['obj_trajs_mask']
-        map_polylines, map_polylines_mask = input_dict['map_polylines'], input_dict['map_polylines_mask']
+        input_dict = batch_dict['input_dict'] #22
+        obj_trajs, obj_trajs_mask = input_dict['obj_trajs'], input_dict['obj_trajs_mask'] #[4, 64, 21, 39] [4, 64, 21]
+        map_polylines, map_polylines_mask = input_dict['map_polylines'], input_dict['map_polylines_mask']#[4, 768, 20, 29],[4, 768, 20]
 
-        obj_trajs_last_pos = input_dict['obj_trajs_last_pos']
-        map_polylines_center = input_dict['map_polylines_center']
-        track_index_to_predict = input_dict['track_index_to_predict']
+        obj_trajs_last_pos = input_dict['obj_trajs_last_pos'] #[4,64,3]
+        map_polylines_center = input_dict['map_polylines_center']#[4,768,3]
+        track_index_to_predict = input_dict['track_index_to_predict']#4
 
         assert obj_trajs_mask.dtype == torch.bool and map_polylines_mask.dtype == torch.bool
 
-        num_center_objects, num_objects, num_timestamps, _ = obj_trajs.shape
-        num_polylines = map_polylines.shape[1]
+        num_center_objects, num_objects, num_timestamps, _ = obj_trajs.shape #[4, 64, 21, 39]
+        num_polylines = map_polylines.shape[1] #768
 
         # apply polyline encoder
-        obj_trajs_in = torch.cat((obj_trajs, obj_trajs_mask[:, :, :, None].type_as(obj_trajs)), dim=-1)
+        obj_trajs_in = torch.cat((obj_trajs, obj_trajs_mask[:, :, :, None].type_as(obj_trajs)), dim=-1) #[4,64,21,40] 多一个维度表示有效性
         obj_polylines_feature = self.agent_polyline_encoder(obj_trajs_in,
-                                                            obj_trajs_mask)  # (num_center_objects, num_objects, C)
+                                                            obj_trajs_mask)  # (num_center_objects, num_objects, C) #[4,64,256]
         map_polylines_feature = self.map_polyline_encoder(map_polylines,
                                                           map_polylines_mask)  # (num_center_objects, num_polylines, C)
 
-        # apply self-attn
+        # apply self-attn 判断掩码是否有效
         obj_valid_mask = (obj_trajs_mask.sum(dim=-1) > 0)  # (num_center_objects, num_objects)
         map_valid_mask = (map_polylines_mask.sum(dim=-1) > 0)  # (num_center_objects, num_polylines)
 
-        global_token_feature = torch.cat((obj_polylines_feature, map_polylines_feature), dim=1)
-        global_token_mask = torch.cat((obj_valid_mask, map_valid_mask), dim=1)
-        global_token_pos = torch.cat((obj_trajs_last_pos, map_polylines_center), dim=1)
-
+        global_token_feature = torch.cat((obj_polylines_feature, map_polylines_feature), dim=1) #torch.Size([4, 64+768=832, 256])
+        global_token_mask = torch.cat((obj_valid_mask, map_valid_mask), dim=1) #torch.Size([4, 832])
+        global_token_pos = torch.cat((obj_trajs_last_pos, map_polylines_center), dim=1)#torch.Size([4, 832, 3])
+        #局部注意力
         if self.use_local_attn:
             global_token_feature = self.apply_local_attn(
                 x=global_token_feature, x_mask=global_token_mask, x_pos=global_token_pos,
                 num_of_neighbors=self.model_cfg.NUM_OF_ATTN_NEIGHBORS
             )
+        #全局注意力
         else:
             global_token_feature = self.apply_global_attn(
                 x=global_token_feature, x_mask=global_token_mask, x_pos=global_token_pos
             )
-
+        #拆分特征
         obj_polylines_feature = global_token_feature[:, :num_objects]
         map_polylines_feature = global_token_feature[:, num_objects:]
         assert map_polylines_feature.shape[1] == num_polylines
@@ -277,6 +290,14 @@ class MTRDecoder(nn.Module):
         super().__init__()
         self.model_cfg = config
         self.object_type = self.model_cfg.OBJECT_TYPE
+        '''
+        OBJECT_TYPE: 目标类型（例如，车辆、行人等）。
+        NUM_FUTURE_FRAMES: 预测未来的帧数。
+        NUM_MOTION_MODES: 运动模式的数量（例如，匀速、加速、减速等）。
+        USE_PLACE_HOLDER: 是否使用占位符（可能是指输入数据中不确定或缺失的部分）。
+        D_MODEL: 模型的维度（通常是特征的大小）。
+        NUM_DECODER_LAYERS: 解码器层的数量。
+        '''
         self.num_future_frames = self.model_cfg.NUM_FUTURE_FRAMES
         self.num_motion_modes = self.model_cfg.NUM_MOTION_MODES
         self.use_place_holder = self.model_cfg.get('USE_PLACE_HOLDER', False)
@@ -421,7 +442,7 @@ class MTRDecoder(nn.Module):
 
         temp_center = pred_dense_trajs_valid[:, :, 0:2] + obj_pos_valid[:, None, 0:2]
         pred_dense_trajs_valid = torch.cat((temp_center, pred_dense_trajs_valid[:, :, 2:]), dim=-1)
-
+ 
         # future feature encoding and fuse to past obj_feature
         obj_future_input_valid = pred_dense_trajs_valid[:, :, [0, 1, -2, -1]].flatten(start_dim=1,
                                                                                       end_dim=2)  # (num_valid_objects, C)
@@ -805,7 +826,7 @@ class MTRDecoder(nn.Module):
         num_polylines = map_feature.shape[1]
 
         # input projection
-        center_objects_feature = self.in_proj_center_obj(center_objects_feature)
+        center_objects_feature = self.in_proj_center_obj(center_objects_feature) # 4,512
         obj_feature_valid = self.in_proj_obj(obj_feature[obj_mask])
         obj_feature = obj_feature.new_zeros(num_center_objects, num_objects, obj_feature_valid.shape[-1])
         obj_feature[obj_mask] = obj_feature_valid

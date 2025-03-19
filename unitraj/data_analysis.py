@@ -1,6 +1,5 @@
 import torch
-
-torch.set_float32_matmul_precision('medium')
+from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 from datasets import build_dataset
 from datasets.common_utils import trajectory_correspondance
@@ -11,7 +10,7 @@ import pandas as pd
 import wandb
 import hydra
 from omegaconf import OmegaConf
-
+#涉及对不同数据集中的轨迹类型和 Kalman 难度进行统计，并绘制相应的分布图。
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def data_analysis(cfg):
@@ -19,12 +18,14 @@ def data_analysis(cfg):
     cfg = OmegaConf.merge(cfg, cfg.method)
 
     train_set = build_dataset(cfg)
-    train_batch_size = max(cfg.method['train_batch_size'] // len(cfg.devices),  1)
+    train_batch_size = max(cfg.method['train_batch_size'] // len(cfg.devices) // 4, 1)
+    #zzs
+    #train_batch_size = max(cfg.method['train_batch_size'] // len(cfg.devices) // train_set.data_chunk_size, 1)
     train_loader = DataLoader(
         train_set, batch_size=train_batch_size, num_workers=cfg.load_num_workers, drop_last=False,
         collate_fn=train_set.collate_fn)
 
-    wandb.init(project="unitraj", name=cfg.exp_name)
+    wandb_logger = WandbLogger(project="unitraj", name=cfg.exp_name)
     type_results = {}
     kalman_results = {}
     vehicle_sum = 0

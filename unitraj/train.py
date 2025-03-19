@@ -1,6 +1,5 @@
 import pytorch_lightning as pl
 import torch
-import datetime
 
 torch.set_float32_matmul_precision('medium')
 from pytorch_lightning.loggers import WandbLogger
@@ -12,16 +11,17 @@ from pytorch_lightning.callbacks import ModelCheckpoint  # Import ModelCheckpoin
 import hydra
 from omegaconf import OmegaConf
 import os
-
+import wandb
+import datetime
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def train(cfg):
     set_seed(cfg.seed)
     OmegaConf.set_struct(cfg, False)  # Open the struct
-    cfg = OmegaConf.merge(cfg, cfg.method)
+    cfg = OmegaConf.merge(cfg, cfg.method) #为什么要合并到一起？
 
     model = build_model(cfg)
-
+    #model = model.cuda()  # 把模型移到GPU
     train_set = build_dataset(cfg)
     val_set = build_dataset(cfg, val=True)
 
@@ -29,7 +29,7 @@ def train(cfg):
     eval_batch_size = max(cfg.method['eval_batch_size'] // len(cfg.devices), 1)
 
     call_backs = []
-
+    #保存最好权重
     checkpoint_callback = ModelCheckpoint(
         monitor='val/brier_fde',  # Replace with your validation metric
         filename='{epoch}-{val/brier_fde:.2f}',
@@ -60,14 +60,15 @@ def train(cfg):
     )
 
     # automatically resume training
-
     if cfg.ckpt_path is None and not cfg.debug:
         # Pattern to match all .ckpt files in the base_path recursively
         search_pattern = os.path.join('/data1/data_zzs/unitraj_ckpt', f"{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}_{cfg.exp_name}_{cfg.dataset}_{cfg.method['model_name']}", '**', '*.ckpt')
         cfg.ckpt_path = find_latest_checkpoint(search_pattern)
 
+
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader, ckpt_path=cfg.ckpt_path)
 
 
 if __name__ == '__main__':
+    wandb.init(project="unitraj")
     train()

@@ -1,4 +1,4 @@
-import os,sys
+import os
 import pickle
 import shutil
 from collections import defaultdict
@@ -6,6 +6,7 @@ from multiprocessing import Pool
 import h5py
 import numpy as np
 import torch
+import os,sys 
 parentdir = '/zzs/mdsn/metadrive'
 
 sys.path.insert(0,parentdir) 
@@ -13,12 +14,10 @@ sys.path.insert(0,parentdir)
 
 from metadrive.scenario.scenario_description import MetaDriveType
 parentdir = '/zzs/mdsn/scenarionet'
-
 sys.path.insert(0,parentdir) 
 from scenarionet.common_utils import read_scenario, read_dataset_summary
 from torch.utils.data import Dataset
 from tqdm import tqdm
-parentdir = '/zzs/UniTraj/unitraj'
 
 from unitraj.datasets import common_utils
 from unitraj.datasets.common_utils import get_polyline_dir, find_true_segments, generate_mask, is_ddp, \
@@ -44,7 +43,7 @@ class BaseDataset(Dataset):
         self.data_loaded_memory = []
         self.file_cache = {}
         self.load_data()
-
+    #加载数据
     def load_data(self):
         self.data_loaded = {}
         if self.is_validation:
@@ -54,10 +53,11 @@ class BaseDataset(Dataset):
 
         for cnt, data_path in enumerate(self.data_path):
             phase, dataset_name = data_path.split('/')[-2],data_path.split('/')[-1]
-            self.cache_path = os.path.join(self.config['cache_path'], dataset_name, phase)
-
-            data_usage_this_dataset = self.config['max_data_num'][cnt]
-            self.starting_frame = self.config['starting_frame'][cnt]
+            self.cache_path = os.path.join(self.config['cache_path'], dataset_name, phase) #缓存保存的位置
+            #设计数据使用限制
+            data_usage_this_dataset = self.config['max_data_num'][cnt] #最多取多少数据-全部
+            self.starting_frame = self.config['starting_frame'][cnt] #从哪一帧开始取
+            #缓存逻辑处理？
             if self.config['use_cache'] or is_ddp():
                 file_list = self.get_data_list(data_usage_this_dataset)
             else:
@@ -66,24 +66,23 @@ class BaseDataset(Dataset):
                     file_list = self.get_data_list(data_usage_this_dataset)
                 else:
 
-                    _, summary_list, mapping = read_dataset_summary(data_path)
-
+                    _, summary_list, mapping = read_dataset_summary(data_path) 
                     if os.path.exists(self.cache_path):
                         shutil.rmtree(self.cache_path)
                     os.makedirs(self.cache_path, exist_ok=True)
-                    process_num = os.cpu_count()//2
+                    process_num = os.cpu_count()//2 #os.cpu_count()=20
                     print('Using {} processes to load data...'.format(process_num))
 
                     data_splits = np.array_split(summary_list, process_num)
 
                     data_splits = [(data_path, mapping, list(data_splits[i]), dataset_name) for i in range(process_num)]
-                    # save the data_splits in a tmp directory
-                    # os.makedirs('tmp', exist_ok=True)
-                    # for i in range(process_num):
-                    #     with open(os.path.join('tmp', '{}.pkl'.format(i)), 'wb') as f:
-                    #         pickle.dump(data_splits[i], f)
+                    # save the data_splits in a tmp directory 保存临时文件
+                    os.makedirs('tmp', exist_ok=True)
+                    for i in range(process_num):
+                        with open(os.path.join('tmp', '{}.pkl'.format(i)), 'wb') as f:
+                            pickle.dump(data_splits[i], f)
 
-                    # results = self.process_data_chunk(0)
+                    # results = self.process_data_chunk(0) 多进程处理
                     with Pool(processes=process_num) as pool:
                         results = pool.map(self.process_data_chunk, list(range(process_num)))
 
@@ -128,12 +127,12 @@ class BaseDataset(Dataset):
                     print(f'{cnt}/{len(data_list)} data processed', flush=True)
                 scenario = read_scenario(data_path, mapping, file_name)
 
-
                 try:
+                    #预处理
                     output = self.preprocess(scenario)
-
+                    # 处理 20
                     output = self.process(output)
-
+                    #后处理
                     output = self.postprocess(output)
 
                 except Exception as e:
@@ -160,51 +159,56 @@ class BaseDataset(Dataset):
         return file_list
 
     def preprocess(self, scenario):
-
+        
         traffic_lights = scenario['dynamic_map_states']
         tracks = scenario['tracks']
         map_feat = scenario['map_features']
-
+        #时间窗口设置
         past_length = self.config['past_len']
         future_length = self.config['future_len']
         total_steps = past_length + future_length
+
         starting_fame = self.starting_frame
         ending_fame = starting_fame + total_steps
-        trajectory_sample_interval = self.config['trajectory_sample_interval']
-        frequency_mask = generate_mask(past_length - 1, total_steps, trajectory_sample_interval)
-
+        trajectory_sample_interval = self.config['trajectory_sample_interval'] #采样频率
+        frequency_mask = generate_mask(past_length - 1, total_steps, trajectory_sample_interval) #每隔一帧打一个mask
+        #轨迹信息处理
         track_infos = {
             'object_id': [],  # {0: unset, 1: vehicle, 2: pedestrian, 3: cyclist, 4: others}
             'object_type': [],
             'trajs': []
         }
-
+        #循环所有交通参与者
         for k, v in tracks.items():
 
             state = v['state']
+            #循环所有轨迹特征
             for key, value in state.items():
                 if len(value.shape) == 1:
-                    state[key] = np.expand_dims(value, axis=-1)
+                    state[key] = np.expand_dims(value, axis=-1) #如果是一维数组扩展成二维
             all_state = [state['position'], state['length'], state['width'], state['height'], state['heading'],
                          state['velocity'], state['valid']]
             # type, x,y,z,l,w,h,heading,vx,vy,valid
             all_state = np.concatenate(all_state, axis=-1)
             # all_state = all_state[::sample_inverval]
+            #长度不够的话 从头开始填充为0
             if all_state.shape[0] < ending_fame:
                 all_state = np.pad(all_state, ((ending_fame - all_state.shape[0], 0), (0, 0)))
+            #过长的话 进行裁剪 造成样本浪费？
             all_state = all_state[starting_fame:ending_fame]
 
             assert all_state.shape[0] == total_steps, f'Error: {all_state.shape[0]} != {total_steps}'
 
-            track_infos['object_id'].append(k)
-            track_infos['object_type'].append(object_type[v['type']])
-            track_infos['trajs'].append(all_state)
-
+            track_infos['object_id'].append(k) #储存当前标识符
+            track_infos['object_type'].append(object_type[v['type']]) #储存当前交通物类别
+            track_infos['trajs'].append(all_state) #储存当前状态
+        #track_infos['trajs'] 157,81,10 轨迹数量，时间步，特征维度
         track_infos['trajs'] = np.stack(track_infos['trajs'], axis=0)
         # scenario['metadata']['ts'] = scenario['metadata']['ts'][::sample_inverval]
         track_infos['trajs'][..., -1] *= frequency_mask[np.newaxis]
+        #裁减过长轨迹
         scenario['metadata']['ts'] = scenario['metadata']['ts'][:total_steps]
-
+        #地图特征处理
         # x,y,z,type
         map_infos = {
             'lane': [],
@@ -219,7 +223,7 @@ class BaseDataset(Dataset):
         for k, v in map_feat.items():
             polyline_type_ = polyline_type[v['type']]
             if polyline_type_ == 0:
-                continue
+                continue #特征无效 跳过
 
             cur_info = {'id': k}
             cur_info['type'] = v['type']
@@ -355,7 +359,7 @@ class BaseDataset(Dataset):
         return ret
 
     def process(self, internal_format):
-
+        #获取感兴趣对象
         info = internal_format
         scene_id = info['scenario_id']
 
@@ -370,7 +374,7 @@ class BaseDataset(Dataset):
         obj_trajs_full = track_infos['trajs']  # (num_objects, num_timestamp, 10)
         obj_trajs_past = obj_trajs_full[:, :current_time_index + 1]
         obj_trajs_future = obj_trajs_full[:, current_time_index + 1:]
-
+        #调用感兴趣对象
         center_objects, track_index_to_predict = self.get_interested_agents(
             track_index_to_predict=track_index_to_predict,
             obj_trajs_full=obj_trajs_full,
@@ -409,7 +413,6 @@ class BaseDataset(Dataset):
             'center_gt_trajs_mask': center_gt_trajs_mask,
             'center_gt_final_valid_idx': center_gt_final_valid_idx,
             'center_gt_trajs_src': obj_trajs_full[track_index_to_predict],
-                    # 添加控制点键值
             'history_control_points': history_control_points,
             'future_control_points': future_control_points
         }
@@ -417,7 +420,7 @@ class BaseDataset(Dataset):
         if info['map_infos']['all_polylines'].__len__() == 0:
             info['map_infos']['all_polylines'] = np.zeros((2, 7), dtype=np.float32)
             print(f'Warning: empty HDMap {scene_id}')
-
+        #处理地图信息
         if self.config.manually_split_lane:
             map_polylines_data, map_polylines_mask, map_polylines_center = self.get_manually_split_map_data(
                 center_objects=center_objects, map_infos=info['map_infos'])
@@ -429,7 +432,7 @@ class BaseDataset(Dataset):
         ret_dict['map_polylines_mask'] = map_polylines_mask.astype(bool)
         ret_dict['map_polylines_center'] = map_polylines_center
 
-        # masking out unused attributes to Zero
+        # masking out unused attributes to Zero 屏蔽无用特征
         masked_attributes = self.config['masked_attributes']
         if 'z_axis' in masked_attributes:
             ret_dict['obj_trajs'][..., 2] = 0
@@ -526,7 +529,7 @@ class BaseDataset(Dataset):
     def get_data_list(self, data_usage):
         file_list_path = os.path.join(self.cache_path, 'file_list.pkl')
         if os.path.exists(file_list_path):
-            data_loaded = pickle.load(open(file_list_path, 'rb'))
+            data_loaded = pickle.load(open(file_list_path, 'rb')) #742
         else:
             raise ValueError('Error: file_list.pkl not found')
 
@@ -627,7 +630,10 @@ class BaseDataset(Dataset):
             control_points = fit_bernstein_curve(filtered_trajectory, degree)
             
             return control_points
-            # 转换历史轨迹控制点
+        
+
+
+        # 转换历史轨迹控制点
         history_control_points = []
         for i in range(len(track_index_to_predict)):
             history_traj = obj_trajs_data[i, track_index_to_predict[i], :, :2]  # 只取x,y坐标
@@ -645,6 +651,13 @@ class BaseDataset(Dataset):
             future_control_points.append(control_points)
         future_control_points = np.stack(future_control_points)
         ####
+
+
+
+
+
+
+
 
         assert obj_trajs_past.__len__() == obj_trajs_data.shape[1]
         valid_past_mask = np.logical_not(obj_trajs_past[:, :, -1].sum(axis=-1) == 0)
@@ -716,10 +729,8 @@ class BaseDataset(Dataset):
             center_objects_list.append(obj_trajs_full[obj_idx, current_time_index])
             track_index_to_predict_selected.append(obj_idx)
         if len(center_objects_list) == 0:
-            # print(f'Warning: no center objects at time step {current_time_index}, scene_id={scene_id}')
+            print(f'Warning: no center objects at time step {current_time_index}, scene_id={scene_id}')
             return None, []
-        # else:
-            # print(f'success')
         center_objects = np.stack(center_objects_list, axis=0)  # (num_center_objects, num_attrs)
         track_index_to_predict = np.array(track_index_to_predict_selected)
         return center_objects, track_index_to_predict
@@ -1118,6 +1129,10 @@ def draw_figures(cfg):
     final_image = concatenate_varying(images, concat_list)
     final_image.show()
 
+    # 保存图像
+    img_save_path = "//zzs/UniTraj/picture"  # 你想要保存图像的路径
+    final_image.savefig(img_save_path)  # 保存图像
+
     # kalman_dict = {}
     # # create 10 buckets with length 10 as the key
     # for i in range(10):
@@ -1136,7 +1151,7 @@ def draw_figures(cfg):
     #
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="config")
+@hydra.main(version_base=None, config_path="//zzs/UniTraj/unitraj/configs", config_name="config")
 def split_data(cfg):
     set_seed(cfg.seed)
     OmegaConf.set_struct(cfg, False)  # Open the struct
@@ -1149,11 +1164,11 @@ def split_data(cfg):
 
 
 if __name__ == '__main__':
-    from unitraj_poly.datasets import build_dataset
-    from unitraj_poly.utils.utils import set_seed
+    from unitraj.datasets import build_dataset
+    from unitraj.utils.utils import set_seed
     import io
     from PIL import Image
-    from unitraj_poly.utils.visualization import concatenate_varying
+    from unitraj.utils.visualization import concatenate_varying
 
     split_data()
     # draw_figures()

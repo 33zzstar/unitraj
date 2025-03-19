@@ -110,7 +110,7 @@ def init_parameters(module, init_scale):
         if isinstance(m, nn.Linear):
             m.weight.data.normal_(mean=0.0, std=init_scale)
             if m.bias is not None:
-                m.bias.data.zero_()
+                m.bias.data.zero_().cuda()
         elif isinstance(m, nn.Embedding):
             m.weight.data.normal_(mean=0.0, std=init_scale)
 

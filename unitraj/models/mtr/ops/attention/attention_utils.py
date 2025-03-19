@@ -62,7 +62,7 @@ class AttentionWeightComputation(Function):
         # Need to ensure that every tensor in query features have an output.
         assert total_query_num == query_features.shape[0]
 
-        output = torch.cuda.FloatTensor(total_query_num, local_size, nhead).zero_()
+        output = torch.cuda.FloatTensor(total_query_num, local_size, nhead).zero_().cuda()
 
         attention_cuda.attention_weight_computation_wrapper(
             b, total_query_num, local_size, total_key_num, nhead, hdim,
@@ -91,9 +91,9 @@ class AttentionWeightComputation(Function):
          index_pair, query_features, key_features) = ctx.for_backwards
 
         grad_query_features = Variable(torch.cuda.FloatTensor(
-            total_query_num, nhead, hdim).zero_())
+            total_query_num, nhead, hdim).zero_().cuda())
         grad_key_features = Variable(torch.cuda.FloatTensor(
-            total_key_num, nhead, hdim).zero_())
+            total_key_num, nhead, hdim).zero_().cuda())
 
         grad_out_data = grad_out.data.contiguous()
         attention_cuda.attention_weight_computation_grad_wrapper(
@@ -152,7 +152,7 @@ class AttentionValueComputation(Function):
         # Need to ensure that every tensor in query features have an output.
         assert total_query_num == attn_weight.shape[0]
 
-        output = torch.cuda.FloatTensor(total_query_num, nhead, hdim).zero_()
+        output = torch.cuda.FloatTensor(total_query_num, nhead, hdim).zero_().cuda()
 
         attention_cuda.attention_value_computation_wrapper(
             b, total_query_num, local_size, total_key_num, nhead, hdim,
@@ -181,9 +181,9 @@ class AttentionValueComputation(Function):
          index_pair, attn_weight, value_features) = ctx.for_backwards
 
         grad_attn_weight = Variable(torch.cuda.FloatTensor(
-            total_query_num, local_size, nhead).zero_())
+            total_query_num, local_size, nhead).zero_().cuda())
         grad_value_features = Variable(torch.cuda.FloatTensor(
-            total_key_num, nhead, hdim).zero_())
+            total_key_num, nhead, hdim).zero_().cuda())
 
         grad_out_data = grad_out.data.contiguous()
         attention_cuda.attention_value_computation_grad_wrapper(

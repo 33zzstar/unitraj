@@ -38,21 +38,29 @@ def build_mlps(c_in, mlp_channels=None, ret_before_act=False, without_norm=False
 
     return nn.Sequential(*layers)
 
-
+'''
+in_channels: 输入特征的维度，表示每个输入点的特征数量（例如，点的坐标、速度等）。 40
+hidden_dim: 隐藏层的维度，即多层感知机（MLP）中间层的大小。 256
+num_layers: 网络的总层数，默认是 3 层。
+num_pre_layers: 用于前几层的数量，默认是 1 层。 1
+out_channels: 输出特征的维度。如果为 None，表示没有特定的输出维度。
+'''
 class PointNetPolylineEncoder(nn.Module):
     def __init__(self, in_channels, hidden_dim, num_layers=3, num_pre_layers=1, out_channels=None):
         super().__init__()
+        #前处理mlp?
         self.pre_mlps = build_mlps(
             c_in=in_channels,
             mlp_channels=[hidden_dim] * num_pre_layers,
             ret_before_act=False
         )
+        #主MLP？
         self.mlps = build_mlps(
             c_in=hidden_dim * 2,
             mlp_channels=[hidden_dim] * (num_layers - num_pre_layers),
             ret_before_act=False
         )
-
+        #输出MLP？
         if out_channels is not None:
             self.out_mlps = build_mlps(
                 c_in=hidden_dim, mlp_channels=[hidden_dim, out_channels],
