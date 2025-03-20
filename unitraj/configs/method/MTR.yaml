@@ -17,6 +17,12 @@ CONTEXT_ENCODER:
   NUM_ATTN_HEAD: 8
   DROPOUT_OF_ATTN: 0.1
   USE_LOCAL_ATTN: True
+  NUM_CHANNEL_IN_MLP_CONTROL: 64  # 控制点编码器通道数
+  NUM_LAYER_IN_MLP_CONTROL: 2     # 控制点编码器层数
+  FUSION_WEIGHT_CONTROL: 0.3      # 控制点特征融合权重
+  FUSION_WEIGHT_AGENT: 0.4        # 智能体特征融合权重  
+  FUSION_WEIGHT_MAP: 0.3          # 地图特征融合权重
+
 
 MOTION_DECODER:
   NAME: MTRDecoder
@@ -29,13 +35,21 @@ MOTION_DECODER:
   DROPOUT_OF_ATTN: 0.1
   NUM_BASE_MAP_POLYLINES: 256
   NUM_WAYPOINT_MAP_POLYLINES: 128
+  NUM_CHANNEL_IN_MLP_CONTROL: 64
+  NUM_LAYER_IN_MLP_CONTROL: 2
+
   LOSS_WEIGHTS: {
     'cls': 1.0,
     'reg': 1.0,
-    'vel': 0.5
+    'vel': 0.5,
+    control_points: 0.5           # 控制点损失权重
   }
 
   NMS_DIST_THRESH: 2.5
+  NUM_CONTROL_POINTS: 6           # 预测的控制点数量
+
+
+    
 
 # train
 max_epochs: 40
