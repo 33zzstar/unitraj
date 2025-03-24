@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 import os ,sys
-parentdir = '//zzs/UniTraj/unitraj/'
+parentdir = '/zzs/UniTraj/unitraj'
 
 sys.path.insert(0,parentdir) 
 from Bernstein import (
@@ -413,6 +413,7 @@ def visualize_prediction(batch, prediction, draw_index=0):
     # 添加控制点提取代码
     history_control_points = batch['history_control_points'][draw_index].cpu().numpy() 
     future_control_points = batch['future_control_points'][draw_index].cpu().numpy()
+    pred_control_points = prediction['predicted_control_point'][draw_index].detach().cpu().numpy()
 
 
 
@@ -490,7 +491,17 @@ def visualize_prediction(batch, prediction, draw_index=0):
             # 其他车辆使用默认渐变色
             draw_trajectory(traj, line_width=2, color=None, ego=False)
 
-   
+       # 在绘制预测轨迹的部分添加控制点可视化
+
+    # 绘制预测的控制点
+    ax.scatter(pred_control_points[:, 0], pred_control_points[:, 1],
+                color='orange', marker='*', s=20, zorder=5,
+                label='Predicted Control Points')
+    
+        # 绘制未来轨迹的拟合曲线 - 使用黑色
+    ax.plot(pred_control_points[:, 0], pred_control_points[:, 1],
+            color='orange', linewidth=0.2, zorder=6,
+            label='Future Fitted Trajectory')
     
     
     # 找出概率最高的轨迹索引
@@ -543,9 +554,9 @@ def visualize_prediction(batch, prediction, draw_index=0):
 
     
     # 保存路径
-    save_path = "//zzs/UniTraj/plt_sample" 
+    save_path = "/data1/data_zzs/plt_sample" 
     #子目录
-    save_commit = '3.18.1_minitrain'
+    save_commit = '3.24.1_add_prectrl'
     #创建完整目录
     save_dir = os.path.join(save_path)
     # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

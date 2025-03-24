@@ -17,7 +17,7 @@ def bernstein_curve(points, t):
 
 def fit_bernstein_curve(trajectory, degree=5):
     """使用最小二乘法拟合轨迹到伯恩斯坦曲线。"""
-    num_points = len(trajectory)
+    num_points = int(len(trajectory))
     t = np.linspace(0, 1, num_points)
 
     # 构建设计矩阵

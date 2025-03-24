@@ -248,6 +248,7 @@ class BaseModel(pl.LightningModule):
 
         predicted_traj = prediction['predicted_trajectory']
         predicted_prob = prediction['predicted_probability'].detach().cpu().numpy()
+        predicted_ctrl = prediction['predicted_probability']
 
         # Calculate ADE losses
         ade_diff = torch.norm(predicted_traj[:, :, :, :2] - gt_traj[:, :, :, :2], 2, dim=-1)
@@ -332,12 +333,12 @@ class BaseModel(pl.LightningModule):
 
         for k, v in loss_dict.items():
             self.log(status + "/" + k, v, on_step=False, on_epoch=True, sync_dist=True, batch_size=size_dict[k])
-        # #zzs
-        # if self.local_rank == 0 and status == 'val':
-        # # if self.local_rank == 0 and status == 'val' and batch_idx == 0:
-        #   img,gt_his_traj,gt_fut_traj,gt_his_ctrl,gt_fut_ctrl = visualization.visualize_prediction(batch, prediction)
-        #   wandb.log({"prediction": [wandb.Image(img)]})
-        #     # 显示图像
+        #zzs
+        if self.local_rank == 0 and status == 'val':
+        # if self.local_rank == 0 and status == 'val' and batch_idx == 0:
+          img,gt_his_traj,gt_fut_traj,gt_his_ctrl,gt_fut_ctrl = visualization.visualize_prediction(batch, prediction)
+          wandb.log({"prediction": [wandb.Image(img)]})
+            # 显示图像
 
         #     # 保存图像
         #     img_save_path = "//zzs/UniTraj/picture/image.png"  # 你想要保存图像的路径

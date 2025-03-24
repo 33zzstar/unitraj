@@ -51,9 +51,11 @@ class MotionTransformer(BaseModel):
         if self.training:
             output['predicted_probability'] = mode_probs  # #[B, c]
             output['predicted_trajectory'] = out_dists  # [B, c, T, 5] to be able to parallelize code
+            output['predicted_control_point'] = out_dict['pred_control_points'] 
         else:
             output['predicted_probability'] = out_dict['pred_scores']  # #[B, c]
-            output['predicted_trajectory'] = out_dict['pred_trajs']  # [B, c, T, 5] to be able to parallelize code
+            output['predicted_trajectory'] = out_dict['pred_trajs']
+            output['predicted_control_point'] = out_dict['pred_control_points']  # [B, c, T, 5] to be able to parallelize code
 
         loss, tb_dict, disp_dict,loss_control = self.motion_decoder.get_loss()
         loss = loss.mean()  # 确保loss是标量
@@ -1008,6 +1010,15 @@ class MTRDecoder(nn.Module):
             pred_scores, pred_trajs = self.generate_final_prediction(pred_list=pred_list, batch_dict=batch_dict)
             batch_dict['pred_scores'] = pred_scores
             batch_dict['pred_trajs'] = pred_trajs
+                    # 在评估时也进行控制点预测
+        if 'control_points_feature' in batch_dict:
+            control_feature = batch_dict['control_points_feature']
+            control_feature = self.control_feature_projection(control_feature)
+            pred_control_points = self.control_point_head(control_feature)
+            pred_control_points = pred_control_points.reshape(num_center_objects, -1, 2)
+            
+            batch_dict['pred_control_points'] = pred_control_points
+            self.forward_ret_dict['pred_control_points'] = pred_control_points
 
         # 修改控制点预测逻辑
         if self.training and 'control_points_feature' in batch_dict:
@@ -1021,12 +1032,12 @@ class MTRDecoder(nn.Module):
             batch_dict['pred_control_points'] = pred_control_points
             self.forward_ret_dict['pred_control_points'] = pred_control_points
             
-            if 'future_control_points' in input_dict:
-                gt_points = input_dict['future_control_points']
-                gt_mask = ~torch.isnan(gt_points).any(dim=-1)
-                self.forward_ret_dict.update({
-                    'gt_control_points': gt_points,
-                    'gt_control_mask': gt_mask
-                })
+        if 'future_control_points' in input_dict:
+            gt_points = input_dict['future_control_points']
+            gt_mask = ~torch.isnan(gt_points).any(dim=-1)
+            self.forward_ret_dict.update({
+                'gt_control_points': gt_points,
+                'gt_control_mask': gt_mask
+            })
         
         return batch_dict
