@@ -49,15 +49,16 @@ class BaseModel(pl.LightningModule):
         raise NotImplementedError
 
     def training_step(self, batch, batch_idx):
-        prediction, loss = self.forward(batch)
+        prediction, loss,loss_control = self.forward(batch)
         self.compute_official_evaluation(batch, prediction)
         self.log_info(batch, batch_idx, prediction, status='train')
         self.log('train/loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True, batch_size=len(batch['input_dict']['center_gt_trajs']))
         wandb.log({'train/loss': loss.item()})
+        wandb.log({'train/ctrl_loss': loss_control.item()})
         return loss
 
     def validation_step(self, batch, batch_idx):
-        prediction, loss = self.forward(batch)
+        prediction, loss,loss_control = self.forward(batch)
         self.compute_official_evaluation(batch, prediction)
         self.log_info(batch, batch_idx, prediction, status='val')
         

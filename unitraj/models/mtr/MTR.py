@@ -45,7 +45,7 @@ class MotionTransformer(BaseModel):
         enc_dict = self.context_encoder(batch)
         out_dict = self.motion_decoder(enc_dict)
 
-        mode_probs, out_dists = out_dict['pred_list'][-1]
+        mode_probs, out_dists = out_dict['pred_list'][-1] #
         output = {}
 
         if self.training:
@@ -55,14 +55,14 @@ class MotionTransformer(BaseModel):
             output['predicted_probability'] = out_dict['pred_scores']  # #[B, c]
             output['predicted_trajectory'] = out_dict['pred_trajs']  # [B, c, T, 5] to be able to parallelize code
 
-        loss, tb_dict, disp_dict = self.motion_decoder.get_loss()
+        loss, tb_dict, disp_dict,loss_control = self.motion_decoder.get_loss()
         loss = loss.mean()  # 确保loss是标量
-        return output, loss
+        return output, loss ,loss_control
 
     def get_loss(self):
-        loss, tb_dict, disp_dict = self.motion_decoder.get_loss()
+        loss, tb_dict, disp_dict,loss_control = self.motion_decoder.get_loss()
 
-        return loss
+        return loss,loss_control
     #学习率优化器
     def configure_optimizers(self):
         decay_steps = [x for x in self.config['learning_rate_sched']]
@@ -279,8 +279,7 @@ class MTREncoder(nn.Module):
             history_control_mask
         )
         
-        # 将特征添加到batch_dict
-        batch_dict['control_points_feature'] = control_points_feature
+
         obj_trajs_last_pos = input_dict['obj_trajs_last_pos'] #[4,64,3]
         map_polylines_center = input_dict['map_polylines_center']#[4,768,3]
         track_index_to_predict = input_dict['track_index_to_predict']#4
@@ -334,6 +333,7 @@ class MTREncoder(nn.Module):
         batch_dict['map_pos'] = map_polylines_center
         batch_dict['control_points_feature'] = control_points_feature
         return batch_dict
+    
 class ControlPointEncoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(ControlPointEncoder, self).__init__()
@@ -899,13 +899,14 @@ class MTRDecoder(nn.Module):
         gt_control_mask = self.forward_ret_dict['gt_control_mask']
         
         # 计算带掩码的 SmoothL1 损失
+        #[B,6,2]
         loss = F.smooth_l1_loss(
             pred_control_points, 
             gt_control_points, 
             reduction='none'
         )
         
-        # 应用掩码并计算平均损失
+        # 应用掩码并计算平均损失 [1]
         loss = (loss * gt_control_mask.unsqueeze(-1)).sum() / torch.clamp_min(gt_control_mask.sum(), min=1.0)
         
         if tb_dict is None:
@@ -937,7 +938,7 @@ class MTRDecoder(nn.Module):
         tb_dict[f'{tb_pre_tag}loss'] = total_loss.item()
         disp_dict[f'{tb_pre_tag}loss'] = total_loss.item()
 
-        return total_loss, tb_dict, disp_dict
+        return total_loss, tb_dict, disp_dict,loss_control_points
 
     def generate_final_prediction(self, pred_list, batch_dict):
         pred_scores, pred_trajs = pred_list[-1]
@@ -1019,8 +1020,8 @@ class MTRDecoder(nn.Module):
             control_feature = self.control_feature_projection(control_feature)  # [B, 512]
             
             # 使用投影后的特征
-            pred_control_points = self.control_point_head(control_feature)
-            pred_control_points = pred_control_points.reshape(num_center_objects, -1, 2)
+            pred_control_points = self.control_point_head(control_feature) #[B,12]
+            pred_control_points = pred_control_points.reshape(num_center_objects, -1, 2)#[B,6,2]
             
             batch_dict['pred_control_points'] = pred_control_points
             self.forward_ret_dict['pred_control_points'] = pred_control_points
