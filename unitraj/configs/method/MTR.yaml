@@ -37,6 +37,10 @@ MOTION_DECODER:
   NUM_WAYPOINT_MAP_POLYLINES: 128
   NUM_CHANNEL_IN_MLP_CONTROL: 64
   NUM_LAYER_IN_MLP_CONTROL: 2
+  USE_CONTROL_POINTS: true        # 是否使用控制点预测
+  CONTROL_FEATURE_DIM: 256       # 控制点特征维度
+  NUM_CONTROL_POINTS: 6          # 预测的控制点数量
+
 
   LOSS_WEIGHTS: {
     'cls': 1.0,
@@ -46,7 +50,7 @@ MOTION_DECODER:
   }
 
   NMS_DIST_THRESH: 2.5
-  NUM_CONTROL_POINTS: 6           # 预测的控制点数量
+
 
 
     

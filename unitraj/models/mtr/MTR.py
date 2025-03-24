@@ -454,6 +454,11 @@ class MTRDecoder(nn.Module):
         )
 
         self.forward_ret_dict = {}
+        # 始终初始化控制点相关层,而不是在forward时动态创建
+        self.control_feature_projection = nn.Linear(
+            in_channels,  # 输入特征维度
+            self.d_model  # 输出特征维度(512)
+            )
         self.control_point_head = nn.Sequential(
                 nn.Linear(self.d_model, self.d_model),
                 nn.ReLU(),
@@ -1004,37 +1009,24 @@ class MTRDecoder(nn.Module):
             batch_dict['pred_scores'] = pred_scores
             batch_dict['pred_trajs'] = pred_trajs
 
+        # 修改控制点预测逻辑
         if self.training and 'control_points_feature' in batch_dict:
-            # 使用编码器提取的控制点特征预测未来控制点
-            control_feature = batch_dict['control_points_feature']  # [B, 256]
+            control_feature = batch_dict['control_points_feature']
             
-            if not hasattr(self, 'control_feature_projection'):
-                # 直接使用控制点特征的实际维度，而不是尝试从配置中获取
-                input_dim = control_feature.shape[-1]  # 获取实际的输入维度
-                self.control_feature_projection = nn.Linear(
-                    input_dim,  # 实际输入维度
-                    self.d_model,  # 512
-                    device=control_feature.device
-                )
-            # 投影特征
-            control_feature = self.control_feature_projection(control_feature)  # [B, 512]
-            
-            # 使用投影后的特征
-            pred_control_points = self.control_point_head(control_feature) #[B,12]
-            pred_control_points = pred_control_points.reshape(num_center_objects, -1, 2)#[B,6,2]
+            # 使用已初始化的层
+            control_feature = self.control_feature_projection(control_feature)
+            pred_control_points = self.control_point_head(control_feature)
+            pred_control_points = pred_control_points.reshape(num_center_objects, -1, 2)
             
             batch_dict['pred_control_points'] = pred_control_points
             self.forward_ret_dict['pred_control_points'] = pred_control_points
             
-            # 保存真实控制点数据用于损失计算
             if 'future_control_points' in input_dict:
-                self.forward_ret_dict['gt_control_points'] = input_dict['future_control_points']
-                # 创建默认掩码，假设所有控制点都有效
                 gt_points = input_dict['future_control_points']
-                # 检查是否有NaN值，如果有则将其标记为无效
                 gt_mask = ~torch.isnan(gt_points).any(dim=-1)
-                self.forward_ret_dict['gt_control_mask'] = gt_mask
-
-
-
+                self.forward_ret_dict.update({
+                    'gt_control_points': gt_points,
+                    'gt_control_mask': gt_mask
+                })
+        
         return batch_dict
