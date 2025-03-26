@@ -1082,7 +1082,7 @@ class MTRDecoder(nn.Module):
             self.forward_ret_dict['pred_control_points'] = pred_control_points
             
             # 只在训练时处理ground truth
-            if self.training and 'future_control_points' in input_dict:
+            if  'future_control_points' in input_dict:
                 gt_points = input_dict['future_control_points']
                 gt_mask = ~torch.isnan(gt_points).any(dim=-1)
                 self.forward_ret_dict.update({

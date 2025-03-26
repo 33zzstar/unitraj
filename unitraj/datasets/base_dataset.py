@@ -53,7 +53,11 @@ class BaseDataset(Dataset):
 
         for cnt, data_path in enumerate(self.data_path):
             phase, dataset_name = data_path.split('/')[-2],data_path.split('/')[-1]
-            self.cache_path = os.path.join(self.config['cache_path'], dataset_name, phase) #缓存保存的位置
+            unicp_suffix = "_w_unicp" if self.config.get('unicp', False) else "_wo_unicp"
+            dataset_name_with_suffix = f"{dataset_name}{unicp_suffix}"
+            self.cache_path = os.path.join(self.config['cache_path'], dataset_name_with_suffix)
+
+            #缓存保存的位置
             #设计数据使用限制
             data_usage_this_dataset = self.config['max_data_num'][cnt] #最多取多少数据-全部
             self.starting_frame = self.config['starting_frame'][cnt] #从哪一帧开始取
@@ -119,7 +123,11 @@ class BaseDataset(Dataset):
             data_chunk = pickle.load(f)
         file_list = {}
         data_path, mapping, data_list, dataset_name = data_chunk
-        hdf5_path = os.path.join(self.cache_path, f'{worker_index}.h5')
+        unicp_suffix = "_w_unicp" if self.config.get('unicp', False) else "_wo_unicp"
+        dataset_name_with_suffix = f"{dataset_name}{unicp_suffix}"
+        cache_path = os.path.join(self.config['cache_path'], dataset_name_with_suffix)
+
+        hdf5_path = os.path.join(cache_path, f'{worker_index}.h5')
 
         with h5py.File(hdf5_path, 'w') as f:
             for cnt, file_name in enumerate(data_list):
