@@ -6,6 +6,7 @@ seed: 42 # random seed
 debug: False # debug mode, will use cpu only
 devices: [3] # gpu ids
 dataset: nuscenes_mini #1 AG2
+unicp: False #控制点辅助预测开关
 
 
 # data related
