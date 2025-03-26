@@ -30,8 +30,14 @@ class MotionTransformer(BaseModel):
         self.config = config
         self.model_cfg = EasyDict(config) #提供字典功能
         self.pred_dicts = [] #用于储存预测结果
+        # 添加控制点预测开关配置
+        self.use_control_points = self.config.get('unicp', False)
 
-        self.model_cfg.MOTION_DECODER['CENTER_OFFSET_OF_MAP'] = self.model_cfg['center_offset_of_map'] 
+        # 确保在MOTION_DECODER和CONTEXT_ENCODER中都设置USE_CONTROL_POINTS
+        self.model_cfg.MOTION_DECODER['USE_CONTROL_POINTS'] = self.use_control_points
+        self.model_cfg.CONTEXT_ENCODER['USE_CONTROL_POINTS'] = self.use_control_points
+        
+        self.model_cfg.MOTION_DECODER['CENTER_OFFSET_OF_MAP'] = self.model_cfg['center_offset_of_map']
         self.model_cfg.MOTION_DECODER['NUM_FUTURE_FRAMES'] = self.model_cfg['future_len']
         self.model_cfg.MOTION_DECODER['OBJECT_TYPE'] = self.model_cfg['object_type']
 
@@ -51,20 +57,44 @@ class MotionTransformer(BaseModel):
         if self.training:
             output['predicted_probability'] = mode_probs  # #[B, c]
             output['predicted_trajectory'] = out_dists  # [B, c, T, 5] to be able to parallelize code
-            output['predicted_control_point'] = out_dict['pred_control_points'] 
+            if self.model_cfg.get('USE_CONTROL_POINTS', False) and 'pred_control_points' in out_dict:
+                output['predicted_control_point'] = out_dict['pred_control_points']
         else:
             output['predicted_probability'] = out_dict['pred_scores']  # #[B, c]
             output['predicted_trajectory'] = out_dict['pred_trajs']
-            output['predicted_control_point'] = out_dict['pred_control_points']  # [B, c, T, 5] to be able to parallelize code
+            if self.model_cfg.get('USE_CONTROL_POINTS', False) and 'pred_control_points' in out_dict:
+                output['predicted_control_point'] = out_dict['pred_control_points']
 
         loss, tb_dict, disp_dict,loss_control = self.motion_decoder.get_loss()
         loss = loss.mean()  # 确保loss是标量
         return output, loss ,loss_control
 
-    def get_loss(self):
-        loss, tb_dict, disp_dict,loss_control = self.motion_decoder.get_loss()
+    def get_loss(self, tb_pre_tag=''):
+        loss_decoder, tb_dict, disp_dict = self.get_decoder_loss(tb_pre_tag=tb_pre_tag)
+        loss_dense_prediction, tb_dict, disp_dict = self.get_dense_future_prediction_loss(
+            tb_pre_tag=tb_pre_tag,
+            tb_dict=tb_dict,
+            disp_dict=disp_dict
+        )
 
-        return loss,loss_control
+        total_loss = loss_decoder + loss_dense_prediction
+        loss_control_points = torch.tensor(0.0, device=total_loss.device)  # 确保是tensor类型
+
+
+        # 只在启用控制点预测时计算相关损失
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            loss_control_points, tb_dict, disp_dict = self.get_control_point_loss(
+                tb_pre_tag=tb_pre_tag,
+                tb_dict=tb_dict,
+                disp_dict=disp_dict
+            )
+            total_loss = total_loss + loss_control_points
+
+        tb_dict[f'{tb_pre_tag}loss'] = total_loss.item()
+        disp_dict[f'{tb_pre_tag}loss'] = total_loss.item()
+
+        return total_loss, tb_dict, disp_dict, loss_control_points
+    
     #学习率优化器
     def configure_optimizers(self):
         decay_steps = [x for x in self.config['learning_rate_sched']]
@@ -108,11 +138,16 @@ class MTREncoder(nn.Module):
             num_pre_layers=self.model_cfg.NUM_LAYER_IN_PRE_MLP_MAP,
             out_channels=self.model_cfg.D_MODEL
         )
-        self.control_point_encoder = ControlPointEncoder(
-            input_dim=2,  # 控制点的x,y坐标
-            hidden_dim=self.model_cfg.get('NUM_CHANNEL_IN_MLP_CONTROL', 64),
-            output_dim=self.model_cfg.D_MODEL  # 使用与其他编码器相同的输出维度
-        )
+        # 初始化控制点编码器为None
+        self.control_point_encoder = None
+        # 只在启用控制点预测时初始化控制点编码器
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            self.control_point_encoder = ControlPointEncoder(
+                input_dim=2,  # 控制点的x,y坐标
+                hidden_dim=self.model_cfg.get('NUM_CHANNEL_IN_MLP_CONTROL', 64),
+                output_dim=self.model_cfg.D_MODEL
+            )
+
         '''
         use_local_attn 是否启用局部注意力
         self_attn_layers 编码器层数
@@ -266,26 +301,13 @@ class MTREncoder(nn.Module):
         input_dict = batch_dict['input_dict'] #22
         obj_trajs, obj_trajs_mask = input_dict['obj_trajs'], input_dict['obj_trajs_mask'] #[4, 64, 21, 39] [4, 64, 21]
         map_polylines, map_polylines_mask = input_dict['map_polylines'], input_dict['map_polylines_mask']#[4, 768, 20, 29],[4, 768, 20]
-        history_control_points = input_dict['history_control_points']
-        
 
-        # 检查是否有NaN值，创建布尔掩码
-        history_control_mask = ~torch.isnan(history_control_points).any(dim=-1)
-        # 如果没有NaN值，则所有点都是有效的
-        if not torch.any(~history_control_mask):
-            history_control_mask = torch.ones_like(history_control_points[..., 0], dtype=torch.bool)
-        
-        # 现在调用编码器时提供两个参数
-        control_points_feature = self.control_point_encoder(
-            history_control_points,
-            history_control_mask
-        )
         
 
         obj_trajs_last_pos = input_dict['obj_trajs_last_pos'] #[4,64,3]
         map_polylines_center = input_dict['map_polylines_center']#[4,768,3]
         track_index_to_predict = input_dict['track_index_to_predict']#4
-        history_control_points = input_dict['history_control_points'] 
+
 
         assert obj_trajs_mask.dtype == torch.bool and map_polylines_mask.dtype == torch.bool
 
@@ -298,7 +320,7 @@ class MTREncoder(nn.Module):
                                                             obj_trajs_mask)  # (num_center_objects, num_objects, C) #[4,64,256]
         map_polylines_feature = self.map_polyline_encoder(map_polylines,
                                                           map_polylines_mask)  # (num_center_objects, num_polylines, C)
-        control_points_feature = self.control_point_encoder(history_control_points)
+
 
         # apply self-attn 判断掩码是否有效
         obj_valid_mask = (obj_trajs_mask.sum(dim=-1) > 0)  # (num_center_objects, num_objects)
@@ -333,7 +355,24 @@ class MTREncoder(nn.Module):
         batch_dict['map_mask'] = map_valid_mask
         batch_dict['obj_pos'] = obj_trajs_last_pos
         batch_dict['map_pos'] = map_polylines_center
-        batch_dict['control_points_feature'] = control_points_feature
+
+
+        # 只在启用控制点预测时处理控制点特征
+        if (self.model_cfg.get('USE_CONTROL_POINTS', False) and 
+            hasattr(self, 'control_point_encoder') and 
+            self.control_point_encoder is not None and 
+            'history_control_points' in input_dict):
+            
+            history_control_points = input_dict['history_control_points']
+            control_points_feature = self.control_point_encoder(history_control_points)
+            history_control_mask = ~torch.isnan(history_control_points).any(dim=-1)
+            if not torch.any(~history_control_mask):
+                history_control_mask = torch.ones_like(history_control_points[..., 0], dtype=torch.bool)
+            control_points_feature = self.control_point_encoder(
+                history_control_points,
+                history_control_mask
+            )
+            batch_dict['control_points_feature'] = control_points_feature
         return batch_dict
     
 class ControlPointEncoder(nn.Module):
@@ -457,16 +496,41 @@ class MTRDecoder(nn.Module):
 
         self.forward_ret_dict = {}
         # 始终初始化控制点相关层,而不是在forward时动态创建
-        self.control_feature_projection = nn.Linear(
-            in_channels,  # 输入特征维度
-            self.d_model  # 输出特征维度(512)
-            )
-        self.control_point_head = nn.Sequential(
+        # 只在启用控制点预测时初始化相关层
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            self.control_feature_projection = nn.Linear(in_channels, self.d_model)
+            self.control_point_head = nn.Sequential(
                 nn.Linear(self.d_model, self.d_model),
                 nn.ReLU(),
-                nn.Linear(self.d_model, self.model_cfg.get('NUM_CONTROL_POINTS', 6) * 2)  # 每个控制点xy坐标
+                nn.Linear(self.d_model, self.model_cfg.get('NUM_CONTROL_POINTS', 6) * 2)
             )
+    def get_loss(self, tb_pre_tag=''):
+        """获取解码器的所有损失"""
+        loss_decoder, tb_dict, disp_dict = self.get_decoder_loss(tb_pre_tag=tb_pre_tag)
+        loss_dense_prediction, tb_dict, disp_dict = self.get_dense_future_prediction_loss(
+            tb_pre_tag=tb_pre_tag,
+            tb_dict=tb_dict,
+            disp_dict=disp_dict
+        )
 
+        total_loss = loss_decoder + loss_dense_prediction
+        loss_control_points = torch.tensor(0.0, device=total_loss.device)  # 确保是tensor类型
+
+
+        # 只在启用控制点预测时计算相关损失
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            loss_control_points, tb_dict, disp_dict = self.get_control_point_loss(
+                tb_pre_tag=tb_pre_tag,
+                tb_dict=tb_dict,
+                disp_dict=disp_dict
+            )
+            total_loss = total_loss + loss_control_points
+
+        tb_dict[f'{tb_pre_tag}loss'] = total_loss.item()
+        disp_dict[f'{tb_pre_tag}loss'] = total_loss.item()
+
+        return total_loss, tb_dict, disp_dict, loss_control_points
+    
     def build_dense_future_prediction_layers(self, hidden_dim, num_future_frames):
         self.obj_pos_encoding_layer = build_mlps(
             c_in=2, mlp_channels=[hidden_dim, hidden_dim, hidden_dim], ret_before_act=True, without_norm=True
@@ -929,23 +993,7 @@ class MTRDecoder(nn.Module):
         
         return weighted_loss, tb_dict, disp_dict
 
-    def get_loss(self, tb_pre_tag=''):
-        loss_decoder, tb_dict, disp_dict = self.get_decoder_loss(tb_pre_tag=tb_pre_tag)
-        loss_dense_prediction, tb_dict, disp_dict = self.get_dense_future_prediction_loss(tb_pre_tag=tb_pre_tag,
-                                                                                          tb_dict=tb_dict,
-                                                                                          disp_dict=disp_dict)
 
-        # 添加控制点损失
-        loss_control_points, tb_dict, disp_dict = self.get_control_point_loss(tb_pre_tag=tb_pre_tag,
-                                                                         tb_dict=tb_dict,
-                                                                         disp_dict=disp_dict)
-
-        total_loss = loss_decoder + loss_dense_prediction + loss_control_points
-        
-        tb_dict[f'{tb_pre_tag}loss'] = total_loss.item()
-        disp_dict[f'{tb_pre_tag}loss'] = total_loss.item()
-
-        return total_loss, tb_dict, disp_dict,loss_control_points
 
     def generate_final_prediction(self, pred_list, batch_dict):
         pred_scores, pred_trajs = pred_list[-1]
@@ -1020,11 +1068,12 @@ class MTRDecoder(nn.Module):
             batch_dict['pred_control_points'] = pred_control_points
             self.forward_ret_dict['pred_control_points'] = pred_control_points
 
-        # 修改控制点预测逻辑
-        if self.training and 'control_points_feature' in batch_dict:
-            control_feature = batch_dict['control_points_feature']
+        # 根据配置决定是否进行控制点预测
+        if (self.model_cfg.get('USE_CONTROL_POINTS', False) and 
+            hasattr(self, 'control_feature_projection') and 
+            'control_points_feature' in batch_dict):
             
-            # 使用已初始化的层
+            control_feature = batch_dict['control_points_feature']
             control_feature = self.control_feature_projection(control_feature)
             pred_control_points = self.control_point_head(control_feature)
             pred_control_points = pred_control_points.reshape(num_center_objects, -1, 2)
@@ -1032,12 +1081,13 @@ class MTRDecoder(nn.Module):
             batch_dict['pred_control_points'] = pred_control_points
             self.forward_ret_dict['pred_control_points'] = pred_control_points
             
-        if 'future_control_points' in input_dict:
-            gt_points = input_dict['future_control_points']
-            gt_mask = ~torch.isnan(gt_points).any(dim=-1)
-            self.forward_ret_dict.update({
-                'gt_control_points': gt_points,
-                'gt_control_mask': gt_mask
-            })
+            # 只在训练时处理ground truth
+            if self.training and 'future_control_points' in input_dict:
+                gt_points = input_dict['future_control_points']
+                gt_mask = ~torch.isnan(gt_points).any(dim=-1)
+                self.forward_ret_dict.update({
+                    'gt_control_points': gt_points,
+                    'gt_control_mask': gt_mask
+                })
         
         return batch_dict

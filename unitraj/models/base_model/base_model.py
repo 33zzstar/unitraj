@@ -334,10 +334,10 @@ class BaseModel(pl.LightningModule):
         for k, v in loss_dict.items():
             self.log(status + "/" + k, v, on_step=False, on_epoch=True, sync_dist=True, batch_size=size_dict[k])
         #zzs
-        if self.local_rank == 0 and status == 'val':
+        # if self.local_rank == 0 and status == 'val':
         # if self.local_rank == 0 and status == 'val' and batch_idx == 0:
-          img,gt_his_traj,gt_fut_traj,gt_his_ctrl,gt_fut_ctrl = visualization.visualize_prediction(batch, prediction)
-          wandb.log({"prediction": [wandb.Image(img)]})
+        #   img,gt_his_traj,gt_fut_traj,gt_his_ctrl,gt_fut_ctrl = visualization.visualize_prediction(batch, prediction)
+        #   wandb.log({"prediction": [wandb.Image(img)]})
             # 显示图像
 
         #     # 保存图像
