@@ -729,7 +729,7 @@ class BaseDataset(Dataset):
             obj_idx = track_index_to_predict[k]
 
             if obj_trajs_full[obj_idx, current_time_index, -1] == 0:
-                print(f'Warning: obj_idx={obj_idx} is not valid at time step {current_time_index}, scene_id={scene_id}')
+                # print(f'Warning: obj_idx={obj_idx} is not valid at time step {current_time_index}, scene_id={scene_id}')
                 continue
             if obj_types[obj_idx] not in selected_type:
                 continue
@@ -737,8 +737,9 @@ class BaseDataset(Dataset):
             center_objects_list.append(obj_trajs_full[obj_idx, current_time_index])
             track_index_to_predict_selected.append(obj_idx)
         if len(center_objects_list) == 0:
-            print(f'Warning: no center objects at time step {current_time_index}, scene_id={scene_id}')
+            # print(f'Warning: no center objects at time step {current_time_index}, scene_id={scene_id}')
             return None, []
+
         center_objects = np.stack(center_objects_list, axis=0)  # (num_center_objects, num_attrs)
         track_index_to_predict = np.array(track_index_to_predict_selected)
         return center_objects, track_index_to_predict

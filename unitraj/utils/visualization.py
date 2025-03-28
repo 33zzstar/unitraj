@@ -262,7 +262,7 @@ def concatenate_varying(image_list, column_counts):
     return final_image
 
 """可视化预测结果包括历史轨迹、实际未来轨迹和预测的多个可能轨迹"""
-def visualize_prediction(batch, prediction, draw_index=0):
+def visualize_prediction(batch, prediction, model_cfg,draw_index=0):
         
     def draw_line_with_mask(point1, point2, color, line_width=1.5,label=None):
         """绘制带掩码的线段"""
@@ -410,11 +410,17 @@ def visualize_prediction(batch, prediction, draw_index=0):
     map_xy = map_lanes[..., :2]
     ego_history_traj = None
     ego_future_traj = None
-    # 添加控制点提取代码
-    history_control_points = batch['history_control_points'][draw_index].cpu().numpy() 
-    future_control_points = batch['future_control_points'][draw_index].cpu().numpy()
-    pred_control_points = prediction['predicted_control_point'][draw_index].detach().cpu().numpy()
 
+    # 在提取控制点的代码段添加条件判断
+    if model_cfg.get('unicp', False):
+        # 提取控制点数据
+        history_control_points = batch['history_control_points'][draw_index].cpu().numpy() 
+        future_control_points = batch['future_control_points'][draw_index].cpu().numpy()
+        pred_control_points = prediction['predicted_control_point'][draw_index].detach().cpu().numpy()
+    else:
+        history_control_points = None
+        future_control_points = None
+        pred_control_points = None
 
 
     map_type = map_lanes[..., 0, -20:]
@@ -491,18 +497,15 @@ def visualize_prediction(batch, prediction, draw_index=0):
             # 其他车辆使用默认渐变色
             draw_trajectory(traj, line_width=2, color=None, ego=False)
 
-       # 在绘制预测轨迹的部分添加控制点可视化
+        # 在绘制预测轨迹的部分添加控制点可视化
 
-    # 绘制预测的控制点
-    ax.scatter(pred_control_points[:, 0], pred_control_points[:, 1],
-                color='orange', marker='*', s=20, zorder=5,
-                label='Predicted Control Points')
-    
-        # 绘制未来轨迹的拟合曲线 - 使用黑色
-    ax.plot(pred_control_points[:, 0], pred_control_points[:, 1],
-            color='orange', linewidth=0.2, zorder=6,
-            label='Future Fitted Trajectory')
-    
+    if pred_control_points is not None:
+        ax.scatter(pred_control_points[:, 0], pred_control_points[:, 1],
+                    color='orange', marker='*', s=20, zorder=5,
+                    label='Predicted Control Points')
+        ax.plot(pred_control_points[:, 0], pred_control_points[:, 1],
+                color='orange', linewidth=0.2, zorder=6,
+                label='Future Fitted Trajectory')
     
     # 找出概率最高的轨迹索引
     max_prob_idx = np.argmax(pred_future_prob)

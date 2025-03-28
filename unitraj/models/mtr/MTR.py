@@ -57,17 +57,17 @@ class MotionTransformer(BaseModel):
         if self.training:
             output['predicted_probability'] = mode_probs  # #[B, c]
             output['predicted_trajectory'] = out_dists  # [B, c, T, 5] to be able to parallelize code
-            if self.model_cfg.get('USE_CONTROL_POINTS', False) and 'pred_control_points' in out_dict:
+            if  self.model_cfg.get('USE_CONTROL_POINTS') and 'pred_control_points' in out_dict:
                 output['predicted_control_point'] = out_dict['pred_control_points']
         else:
             output['predicted_probability'] = out_dict['pred_scores']  # #[B, c]
             output['predicted_trajectory'] = out_dict['pred_trajs']
-            if self.model_cfg.get('USE_CONTROL_POINTS', False) and 'pred_control_points' in out_dict:
+            if  self.model_cfg.get('USE_CONTROL_POINTS') and 'pred_control_points' in out_dict:
                 output['predicted_control_point'] = out_dict['pred_control_points']
 
         loss, tb_dict, disp_dict,loss_control = self.motion_decoder.get_loss()
         loss = loss.mean()  # 确保loss是标量
-        return output, loss ,loss_control
+        return output, loss , loss_control
 
     def get_loss(self, tb_pre_tag=''):
         loss_decoder, tb_dict, disp_dict = self.get_decoder_loss(tb_pre_tag=tb_pre_tag)

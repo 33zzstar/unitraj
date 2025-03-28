@@ -51,16 +51,16 @@ class BaseModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         prediction, loss,loss_control = self.forward(batch)
         self.compute_official_evaluation(batch, prediction)
-        self.log_info(batch, batch_idx, prediction, status='train')
+        self.log_info(batch, batch_idx, prediction,loss_control, status='train')
         self.log('train/loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True, batch_size=len(batch['input_dict']['center_gt_trajs']))
         wandb.log({'train/loss': loss.item()})
         wandb.log({'train/ctrl_loss': loss_control.item()})
         return loss
 
     def validation_step(self, batch, batch_idx):
-        prediction, loss,loss_control = self.forward(batch)
+        prediction, loss,loss_control  = self.forward(batch)
         self.compute_official_evaluation(batch, prediction)
-        self.log_info(batch, batch_idx, prediction, status='val')
+        self.log_info(batch, batch_idx, prediction,loss_control, status='val')
         
         # 使用 self.log 记录到 PyTorch Lightning
         self.log('val/loss', loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True, 
@@ -238,7 +238,7 @@ class BaseModel(pl.LightningModule):
 
             self.pred_dicts += pred_dict_list
 
-    def log_info(self, batch, batch_idx, prediction, status='train'):
+    def log_info(self, batch, batch_idx, prediction,loss_control, status='train'):
         ## logging
         # Split based on dataset
         inputs = batch['input_dict']
@@ -248,7 +248,7 @@ class BaseModel(pl.LightningModule):
 
         predicted_traj = prediction['predicted_trajectory']
         predicted_prob = prediction['predicted_probability'].detach().cpu().numpy()
-        predicted_ctrl = prediction['predicted_probability']
+        predicted_ctrl = prediction['predicted_probability'].detach().cpu().numpy()
 
         # Calculate ADE losses
         ade_diff = torch.norm(predicted_traj[:, :, :, :2] - gt_traj[:, :, :, :2], 2, dim=-1)
@@ -333,16 +333,16 @@ class BaseModel(pl.LightningModule):
 
         for k, v in loss_dict.items():
             self.log(status + "/" + k, v, on_step=False, on_epoch=True, sync_dist=True, batch_size=size_dict[k])
-        #zzs
-        # if self.local_rank == 0 and status == 'val':
+        # zzs
+        if self.local_rank == 0 and status == 'val':
         # if self.local_rank == 0 and status == 'val' and batch_idx == 0:
-        #   img,gt_his_traj,gt_fut_traj,gt_his_ctrl,gt_fut_ctrl = visualization.visualize_prediction(batch, prediction)
-        #   wandb.log({"prediction": [wandb.Image(img)]})
-            # 显示图像
+          img,gt_his_traj,gt_fut_traj,gt_his_ctrl,gt_fut_ctrl = visualization.visualize_prediction(batch, prediction,model_cfg=self.model_cfg,)
+          wandb.log({"prediction": [wandb.Image(img)]})
+          # 显示图像
 
-        #     # 保存图像
-        #     img_save_path = "//zzs/UniTraj/picture/image.png"  # 你想要保存图像的路径
-        #     img.savefig(img_save_path)  # 保存图像
+          # 保存图像
+          img_save_path = "/data1/data_zzs/plt_sample/3_27.png"  # 你想要保存图像的路径
+          img.savefig(img_save_path)  # 保存图像
 
         if status == 'train':
             metrics_dict = {
