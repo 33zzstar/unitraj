@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
 
-from unitraj.models.base_model.base_model import BaseModel
+from models.base_model.base_model import BaseModel
 from .wayformer_utils import PerceiverEncoder, PerceiverDecoder, TrainableQueryProvider
 
 

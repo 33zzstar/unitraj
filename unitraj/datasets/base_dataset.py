@@ -7,23 +7,23 @@ import h5py
 import numpy as np
 import torch
 import os,sys 
-parentdir = '/zzs/mdsn/metadrive'
+parentdir = '/home/zzs/mdsn/metadrive'
 
 sys.path.insert(0,parentdir) 
 
 
 from metadrive.scenario.scenario_description import MetaDriveType
-parentdir = '/zzs/mdsn/scenarionet'
+parentdir = '/home/zzs/mdsn/scenarionet'
 sys.path.insert(0,parentdir) 
 from scenarionet.common_utils import read_scenario, read_dataset_summary
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from unitraj.datasets import common_utils
-from unitraj.datasets.common_utils import get_polyline_dir, find_true_segments, generate_mask, is_ddp, \
+from datasets import common_utils
+from datasets.common_utils import get_polyline_dir, find_true_segments, generate_mask, is_ddp, \
     get_kalman_difficulty, get_trajectory_type, interpolate_polyline
-from unitraj.datasets.types import object_type, polyline_type
-from unitraj.utils.visualization import check_loaded_data
+from datasets.types import object_type, polyline_type
+from utils.visualization import check_loaded_data
 from functools import lru_cache
 
 default_value = 0
@@ -616,7 +616,7 @@ class BaseDataset(Dataset):
         ####添加历史轨迹和未来轨迹的控制点转换
         def get_trajectory_control_points(trajectory, mask):
             import os ,sys
-            parentdir = '/zzs/UniTraj/unitraj/'
+            parentdir = '/home/zzs/UniTraj/unitraj'
 
             sys.path.insert(0,parentdir) 
             from Bernstein import (
@@ -1139,8 +1139,8 @@ def draw_figures(cfg):
     final_image.show()
 
     # 保存图像
-    img_save_path = "//zzs/UniTraj/picture"  # 你想要保存图像的路径
-    final_image.savefig(img_save_path)  # 保存图像
+    # img_save_path = "/zzs/UniTraj/picture"  # 你想要保存图像的路径
+    # final_image.savefig(img_save_path)  # 保存图像
 
     # kalman_dict = {}
     # # create 10 buckets with length 10 as the key
@@ -1160,7 +1160,7 @@ def draw_figures(cfg):
     #
 
 
-@hydra.main(version_base=None, config_path="//zzs/UniTraj/unitraj/configs", config_name="config")
+@hydra.main(version_base=None, config_path="/home/zzs/UniTraj/unitraj/configs", config_name="config")
 def split_data(cfg):
     set_seed(cfg.seed)
     OmegaConf.set_struct(cfg, False)  # Open the struct
@@ -1173,11 +1173,11 @@ def split_data(cfg):
 
 
 if __name__ == '__main__':
-    from unitraj.datasets import build_dataset
-    from unitraj.utils.utils import set_seed
+    from datasets import build_dataset
+    from utils.utils import set_seed
     import io
     from PIL import Image
-    from unitraj.utils.visualization import concatenate_varying
+    from utils.visualization import concatenate_varying
 
     split_data()
     # draw_figures()

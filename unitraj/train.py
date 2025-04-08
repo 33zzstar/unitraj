@@ -18,7 +18,7 @@ import datetime
 def train(cfg):
     set_seed(cfg.seed)
     OmegaConf.set_struct(cfg, False)  # Open the struct
-    cfg = OmegaConf.merge(cfg, cfg.method) #为什么要合并到一起？
+    cfg = OmegaConf.merge(cfg, cfg.method) 
 
     model = build_model(cfg)
     #model = model.cuda()  # 把模型移到GPU
@@ -51,7 +51,7 @@ def train(cfg):
     trainer = pl.Trainer(
         max_epochs=cfg.method.max_epochs,
         logger=None if cfg.debug else WandbLogger(project="unitraj", name=cfg.exp_name, id=cfg.exp_name),
-        devices=[3] if cfg.debug else cfg.devices,
+        devices=4 if cfg.debug else cfg.devices,
         gradient_clip_val=cfg.method.grad_clip_norm,
         accelerator="gpu" if cfg.debug else "gpu",
         profiler="simple",

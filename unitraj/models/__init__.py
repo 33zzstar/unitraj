@@ -1,6 +1,6 @@
-from unitraj.models.autobot.autobot import AutoBotEgo
-from unitraj.models.mtr.MTR import MotionTransformer
-from unitraj.models.wayformer.wayformer import Wayformer
+from models.autobot.autobot import AutoBotEgo
+from models.mtr.MTR import MotionTransformer
+from models.wayformer.wayformer import Wayformer
 
 __all__ = {
     'autobot': AutoBotEgo,
