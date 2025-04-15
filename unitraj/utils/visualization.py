@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 import os ,sys
+from matplotlib.collections import LineCollection
+from matplotlib.patches import FancyArrowPatch
+import matplotlib.transforms as transforms
 parentdir = '/zzs/UniTraj/unitraj'
 
 sys.path.insert(0,parentdir) 
@@ -303,33 +306,46 @@ def visualize_prediction(batch, prediction, model_cfg,draw_index=0):
         # Start is red, end is blue """自车轨迹的颜色插值(红到蓝)"""
         return (1 - t / total_t, 0, t / total_t)
 
-    def draw_trajectory(trajectory, line_width, color=None, ego=False):
-        """
-        绘制轨迹
-        Args:
-            trajectory: 轨迹点
-            line_width: 线宽
-            color: 指定颜色（如果为None则使用默认渐变色）
-            ego: 是否为自车
-        """
-        total_t = len(trajectory)
-        for t in range(total_t - 1):
-            if ego:
-                # 自车使用点+线的表示方式
-                if trajectory[t, 0] and trajectory[t + 1, 0]:
-                    draw_line_with_point(trajectory[t], trajectory[t + 1], color=color, line_width=line_width)
-            else:
-                # 非自车使用渐变色
-                if color is not None:
-                    # 使用指定颜色
-                    if trajectory[t, 0] and trajectory[t + 1, 0]:
-                        draw_line_with_mask(trajectory[t], trajectory[t + 1], color=color, line_width=line_width)
-                else:
-                    # 使用渐变色
-                    current_color = interpolate_color(t, total_t)
-                    if trajectory[t, 0] and trajectory[t + 1, 0]:
-                        draw_line_with_mask(trajectory[t], trajectory[t + 1], color=current_color, line_width=line_width)
+    def draw_trajectory(trajectory, line_width=2, color=None, ego=False):
 
+        points = trajectory[:, :2]
+        valid_mask = (points[:, 0] != 0)
+        valid_points = points[valid_mask]
+
+        if len(valid_points) < 2:
+            return
+
+        # 构建分段线段
+        segments = np.array([valid_points[:-1], valid_points[1:]]).transpose(1, 0, 2)
+
+        num_segments = len(segments)
+
+        if color is not None:
+            colors = [color] * num_segments
+        else:
+            if ego:
+                # 红到蓝
+                colors = [(1 - i / num_segments, 0, i / num_segments) for i in range(num_segments)]
+            else:
+                # 绿到蓝
+                colors = [(0, 1 - i / num_segments, i / num_segments) for i in range(num_segments)]
+
+        # 使用 LineCollection 批量绘制渐变线段
+        lc = LineCollection(segments, colors=colors, linewidths=line_width, alpha=0.8, zorder=3)
+        ax.add_collection(lc)
+
+        # 自车起点标记
+        if ego:
+            ax.plot(valid_points[0, 0], valid_points[0, 1], marker='*', color='red', markersize=6, zorder=4, label='Ego Start')
+
+        # 添加终点箭头
+        if len(valid_points) >= 2:
+            start_pt = valid_points[-2]
+            end_pt = valid_points[-1]
+            arrow = FancyArrowPatch(posA=start_pt, posB=end_pt,
+                                    arrowstyle='->', color=colors[-1] if color is None else color,
+                                    mutation_scale=6, linewidth=0.5, zorder=5)
+            ax.add_patch(arrow)
         # 添加控制点相关函数
     def fit_trajectory_to_control_points(trajectory):
         """将轨迹转换为控制点并生成拟合曲线"""
@@ -559,7 +575,7 @@ def visualize_prediction(batch, prediction, model_cfg,draw_index=0):
     # 保存路径
     save_path = "/data1/data_zzs/plt_sample" 
     #子目录
-    save_commit = '3.24.1_add_prectrl'
+    save_commit = '4.15.1_add_prectrl'
     #创建完整目录
     save_dir = os.path.join(save_path)
     # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

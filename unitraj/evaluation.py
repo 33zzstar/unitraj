@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-
+import os
 torch.set_float32_matmul_precision('medium')
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
@@ -17,7 +17,12 @@ def evaluation(cfg):
     OmegaConf.set_struct(cfg, False)  # Open the struct
     cfg = OmegaConf.merge(cfg, cfg.method)
     cfg['eval'] = True
+    # 检查是否禁用wandb
+    if cfg.get('disable_wandb', False):
 
+        os.environ["WANDB_MODE"] = "disabled"
+    else:
+        wandb.init(project="unitraj")
     model = build_model(cfg)
 
     val_set = build_dataset(cfg, val=True)
@@ -40,5 +45,5 @@ def evaluation(cfg):
 
 
 if __name__ == '__main__':
-    wandb.init(project="unitraj")
+    
     evaluation()

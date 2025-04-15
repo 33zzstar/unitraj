@@ -2,24 +2,25 @@
 #1.写实验名称
 #2.换验证/测试集
 #3.检查显存 batchsize修改
-#4.debug False 模型 数据集
-exp_name: '4.7_debug' # name that will be used in wandb
-# ckpt_path: "/data1/data_zzs/unitraj_ckpt/20250403-102144_4.3_unitraj_ALLID_wounicp_train-c_ALL_MTR/epoch=24-val/brier_fde=1.53.ckpt" 
+#4.debug False 模型(NUSCENES b=8) 数据集 ckpt_path cache_path
+exp_name: '4.14_contal_train' # name that will be used in wandb
+# ckpt_path: "/data1/data_zzs/unitraj_ckpt/20250409-170041_4.9_contal_eval_mini_MTR/epoch=12-val/brier_fde=6.05.ckpt" 
 ckpt_path: null
 seed: 42 # random seed
 debug: True  # debug mode, will use cpu only True
 # devices: [ 3 ] # gpu ids
-devices: [0,1,2] # gpu ids
-dataset: ALL #1 AG2 True
+devices: [3] # gpu ids
+dataset: nuscenes #1 AG2 True
 unicp: True #控制点辅助预测开关 False True MTR也需要打开
+disable_wandb: True  # 禁用wandb=True
 
 
 # data related
 load_num_workers: 16 # number of workers for loading data
-# train_data_path: [ "/data1/data_zzs/dataset_unitraj_split/All_Train" ] # list of paths to the training data
-# val_data_path: [ "/data1/data_zzs/dataset_unitraj_split/All_Val" ] 
-train_data_path: [ "/data1/data_zzs/dataset_unitraj_split/nuscenes_val_split" ] # list of paths to the training data
-val_data_path: [ "/data1/data_zzs/dataset_unitraj_split/nuscenes_val_split" ] 
+train_data_path: [ "/data1/data_zzs/dataset_unitraj_split/mini_traintest" ] # list of paths to the training data
+val_data_path: [ "/data1/data_zzs/dataset_unitraj_split/mini_val" ] 
+# train_data_path: [ "/data1/data_zzs/dataset_unitraj_split/nuscenes_val_split" ] # list of paths to the training data
+# val_data_path: [ "/data1/data_zzs/dataset_unitraj_split/nuscenes_val_split" ] 
 # train_data_path: [ "/data1/data_zzs/dataset_unitraj_split/AG2_train" ] # list of paths to the training data
 # val_data_path: [ "/data1/data_zzs/dataset_unitraj_split/AG2_test" ] 
 cache_path: "/data1/data_zzs/unitraj_cache"

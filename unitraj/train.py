@@ -16,6 +16,13 @@ import datetime
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def train(cfg):
+    # 检查是否禁用wandb
+    if cfg.get('disable_wandb', False):
+
+        os.environ["WANDB_MODE"] = "disabled"
+    else:
+        wandb.init(project="unitraj")
+
     set_seed(cfg.seed)
     OmegaConf.set_struct(cfg, False)  # Open the struct
     cfg = OmegaConf.merge(cfg, cfg.method) 
@@ -31,8 +38,8 @@ def train(cfg):
     call_backs = []
     #保存最好权重
     checkpoint_callback = ModelCheckpoint(
-        monitor='val/brier_fde',  # Replace with your validation metric
-        filename='{epoch}-{val/brier_fde:.2f}',
+        monitor='val/minADE6',  # Replace with your validation metric
+         filename='{epoch}-{val/brier_fde:.2f}-{val/minFDE6:.2f}-{val/minADE6:.2f}',
         save_top_k=1,
         mode='min',  # 'min' for loss/error, 'max' for accuracy
         dirpath=f"/data1/data_zzs/unitraj_ckpt/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}_{cfg.exp_name}_{cfg.dataset}_{cfg.method['model_name']}"
@@ -51,7 +58,7 @@ def train(cfg):
     trainer = pl.Trainer(
         max_epochs=cfg.method.max_epochs,
         logger=None if cfg.debug else WandbLogger(project="unitraj", name=cfg.exp_name, id=cfg.exp_name),
-        devices=4 if cfg.debug else cfg.devices,
+        devices=1 if cfg.debug else cfg.devices,
         gradient_clip_val=cfg.method.grad_clip_norm,
         accelerator="gpu" if cfg.debug else "gpu",
         profiler="simple",
@@ -70,5 +77,5 @@ def train(cfg):
 
 
 if __name__ == '__main__':
-    wandb.init(project="unitraj")
+    
     train()

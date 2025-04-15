@@ -32,6 +32,8 @@ class MotionTransformer(BaseModel):
         self.pred_dicts = [] #用于储存预测结果
         # 添加控制点预测开关配置
         self.use_control_points = self.config.get('unicp', False)
+        # 确保disable_wandb属性存在
+        self.disable_wandb = config.get('disable_wandb', False)
 
         # 确保在MOTION_DECODER和CONTEXT_ENCODER中都设置USE_CONTROL_POINTS
         self.model_cfg.MOTION_DECODER['USE_CONTROL_POINTS'] = self.use_control_points
@@ -543,9 +545,15 @@ class MTRDecoder(nn.Module):
         self.obj_pos_encoding_layer = build_mlps(
             c_in=2, mlp_channels=[hidden_dim, hidden_dim, hidden_dim], ret_before_act=True, without_norm=True
         )
+
+        # 根据是否启用控制点预测来决定输出维度
+        output_dim = num_future_frames * 7
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            output_dim += self.num_control_points * 2
+
         self.dense_future_head = build_mlps(
             c_in=hidden_dim * 2,
-            mlp_channels=[hidden_dim, hidden_dim, num_future_frames * 7 + self.num_control_points * 2],
+            mlp_channels=[hidden_dim, hidden_dim, output_dim],
             ret_before_act=True
         )
 
@@ -642,45 +650,42 @@ class MTRDecoder(nn.Module):
         obj_fused_feature_valid = torch.cat((obj_pos_feature_valid, obj_feature_valid), dim=-1)  # [num_valid_objects, 2C]
 
         # 预测密集轨迹和控制点
-        pred_dense_trajs_valid = self.dense_future_head(obj_fused_feature_valid)  # [num_valid_objects, num_future_frames * 7 + num_control_points * 2]
+        pred_dense_output_valid = self.dense_future_head(obj_fused_feature_valid)
         
-        # 分离轨迹点和控制点
-        pred_trajs_valid = pred_dense_trajs_valid[..., :self.num_future_frames * 7]  # [num_valid_objects, num_future_frames * 7]
-        pred_control_points_valid = pred_dense_trajs_valid[..., self.num_future_frames * 7:]  # [num_valid_objects, num_control_points * 2]
+        # 分离轨迹点和控制点预测
+        traj_size = self.num_future_frames * 7
+        pred_trajs_valid = pred_dense_output_valid[..., :traj_size].view(-1, self.num_future_frames, 7)
         
-        # 重塑轨迹点
-        pred_trajs_valid = pred_trajs_valid.view(-1, self.num_future_frames, 7)  # [num_valid_objects, num_future_frames, 7]
-        
-        # 重塑控制点
-        pred_control_points_valid = pred_control_points_valid.view(-1, self.num_control_points, 2)  # [num_valid_objects, num_control_points, 2]
+        # 只在启用控制点预测时处理控制点
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            pred_control_points_valid = pred_dense_output_valid[..., traj_size:].view(-1, self.num_control_points, 2)
+            pred_control_points_valid = pred_control_points_valid + obj_pos_valid[:, None, 0:2]
 
         # 调整轨迹点位置
-        temp_center = pred_trajs_valid[:, :, 0:2] + obj_pos_valid[:, None, 0:2]  # [num_valid_objects, num_future_frames, 2]
-        pred_trajs_valid = torch.cat((temp_center, pred_trajs_valid[:, :, 2:]), dim=-1)  # [num_valid_objects, num_future_frames, 7]
-
-        # 调整控制点位置
-        pred_control_points_valid = pred_control_points_valid + obj_pos_valid[:, None, 0:2]  # [num_valid_objects, num_control_points, 2]
+        temp_center = pred_trajs_valid[:, :, 0:2] + obj_pos_valid[:, None, 0:2]
+        pred_trajs_valid = torch.cat((temp_center, pred_trajs_valid[:, :, 2:]), dim=-1)
 
         # 未来特征编码并融合到过去的物体特征
-        obj_future_input_valid = pred_trajs_valid[:, :, [0, 1, -2, -1]].flatten(start_dim=1, end_dim=2)  # [num_valid_objects, num_future_frames * 4]
-        obj_future_feature_valid = self.future_traj_mlps(obj_future_input_valid)  # [num_valid_objects, C]
-
-        obj_full_trajs_feature = torch.cat((obj_feature_valid, obj_future_feature_valid), dim=-1)  # [num_valid_objects, 2C]
-        obj_feature_valid = self.traj_fusion_mlps(obj_full_trajs_feature)  # [num_valid_objects, C]
+        obj_future_input_valid = pred_trajs_valid[:, :, [0, 1, -2, -1]].flatten(start_dim=1, end_dim=2)
+        obj_future_feature_valid = self.future_traj_mlps(obj_future_input_valid)
+        obj_full_trajs_feature = torch.cat((obj_feature_valid, obj_future_feature_valid), dim=-1)
+        obj_feature_valid = self.traj_fusion_mlps(obj_full_trajs_feature)
 
         # 创建输出张量
-        ret_obj_feature = torch.zeros_like(obj_feature)  # [B, N, C]
+        ret_obj_feature = torch.zeros_like(obj_feature)
         ret_obj_feature[obj_mask] = obj_feature_valid
-
-        ret_pred_dense_future_trajs = obj_feature.new_zeros(num_center_objects, num_objects, self.num_future_frames, 7)  # [B, N, T, 7]
+        
+        ret_pred_dense_future_trajs = obj_feature.new_zeros(num_center_objects, num_objects, self.num_future_frames, 7)
         ret_pred_dense_future_trajs[obj_mask] = pred_trajs_valid
-
-        ret_pred_control_points = obj_feature.new_zeros(num_center_objects, num_objects, self.num_control_points, 2)  # [B, N, num_control_points, 2]
-        ret_pred_control_points[obj_mask] = pred_control_points_valid
 
         # 保存预测结果
         self.forward_ret_dict['pred_dense_trajs'] = ret_pred_dense_future_trajs
-        self.forward_ret_dict['pred_dense_control_points'] = ret_pred_control_points
+        
+        # 只在启用控制点预测时保存控制点预测结果
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            ret_pred_control_points = obj_feature.new_zeros(num_center_objects, num_objects, self.num_control_points, 2)
+            ret_pred_control_points[obj_mask] = pred_control_points_valid
+            self.forward_ret_dict['pred_dense_control_points'] = ret_pred_control_points
 
         return ret_obj_feature, ret_pred_dense_future_trajs
 
@@ -890,8 +895,9 @@ class MTRDecoder(nn.Module):
             
             # 计算不同部分的元素数量
             traj_size = self.num_future_frames * 7
-            control_size = self.num_control_points * 2
-            total_size = traj_size + control_size
+            if self.model_cfg.get('USE_CONTROL_POINTS', False):
+                control_size = self.num_control_points * 2
+                total_size = traj_size + control_size
             
             # 分离轨迹点和控制点预测
             pred_trajs_flat = all_preds[:, :traj_size]
@@ -900,7 +906,7 @@ class MTRDecoder(nn.Module):
             # 重塑轨迹点预测为正确的形状
             pred_trajs = pred_trajs_flat.view(num_center_objects, num_query, self.num_future_frames, 7)
             
-            # 重塑控制点预测（如果存在）
+            # # 重塑控制点预测（如果存在）
             if pred_control_points_flat is not None:
                 pred_control_points = pred_control_points_flat.view(num_center_objects, num_query, self.num_control_points, 2)
                 self.forward_ret_dict[f'pred_control_points_layer{layer_idx}'] = pred_control_points
@@ -1045,9 +1051,7 @@ class MTRDecoder(nn.Module):
         obj_trajs_future_state = self.forward_ret_dict['obj_trajs_future_state']  # [B, N, T, 4]
         obj_trajs_future_mask = self.forward_ret_dict['obj_trajs_future_mask']  # [B, N, T]
         pred_dense_trajs = self.forward_ret_dict['pred_dense_trajs']  # [B, N, T, 7]
-        pred_dense_control_points = self.forward_ret_dict['pred_dense_control_points']  # [B, N, num_control_points, 2]
-        center_gt_control_points = self.forward_ret_dict['gt_control_points']  # [B, num_control_points, 2]
-        center_gt_control_mask = self.forward_ret_dict['gt_control_mask']  # [B, num_control_points]
+
 
         # 分离轨迹点和速度
         pred_dense_trajs_gmm = pred_dense_trajs[:, :, :, 0:5]  # [B, N, T, 5]
@@ -1076,15 +1080,22 @@ class MTRDecoder(nn.Module):
             use_square_gmm=False,
         )
         loss_reg_gmm = loss_reg_gmm.view(num_center_objects, num_objects)
+        
+        # 初始化控制点损失为0
+        loss_control = torch.tensor(0.0, device=loss_reg_gmm.device)
 
-        # 计算控制点损失
-        loss_control = F.smooth_l1_loss(
-            pred_dense_control_points,
-            center_gt_control_points[:, None, :, :].expand(-1, num_objects, -1, -1),
-            reduction='none'
-        )
-        loss_control = (loss_control * center_gt_control_mask[:, None, :, None]).sum(dim=-1).sum(dim=-1)
-
+        # 只在启用控制点预测时计算控制点损失
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            pred_dense_control_points = self.forward_ret_dict['pred_dense_control_points']  # [B, N, num_control_points, 2]
+            center_gt_control_points = self.forward_ret_dict['gt_control_points']  # [B, num_control_points, 2]
+            center_gt_control_mask = self.forward_ret_dict['gt_control_mask']  # [B, num_control_points]
+            
+            loss_control = F.smooth_l1_loss(
+                pred_dense_control_points,
+                center_gt_control_points[:, None, :, :].expand(-1, num_objects, -1, -1),
+                reduction='none'
+            )
+            loss_control = (loss_control * center_gt_control_mask[:, None, :, None]).sum(dim=-1).sum(dim=-1)
         # 合并损失
         loss_reg = loss_reg_vel + loss_reg_gmm + loss_control
 
@@ -1102,7 +1113,10 @@ class MTRDecoder(nn.Module):
         tb_dict[f'{tb_pre_tag}loss_dense_prediction'] = loss_reg.item()
         tb_dict[f'{tb_pre_tag}loss_dense_prediction_vel'] = loss_reg_vel.mean().item()
         tb_dict[f'{tb_pre_tag}loss_dense_prediction_gmm'] = loss_reg_gmm.mean().item()
-        tb_dict[f'{tb_pre_tag}loss_dense_prediction_control'] = loss_control.mean().item()
+        if self.model_cfg.get('USE_CONTROL_POINTS', False):
+            tb_dict[f'{tb_pre_tag}loss_dense_prediction_control'] = loss_control.mean().item()
+
+        
 
         return loss_reg, tb_dict, disp_dict
 

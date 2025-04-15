@@ -1,5 +1,5 @@
 <div style="text-align: center;">
-  <img src="https://github.com/vita-epfl/UniTraj/blob/main/docs/assets/unitraj.gif" alt="Demo" width="300">
+  <img src="https://github.com/vita-epfl/UniTraj/blob/main/docs/assets/gif" alt="Demo" width="300">
 </div>
 
 # UniTraj: A Unified Framework for Scalable Vehicle Trajectory Prediction

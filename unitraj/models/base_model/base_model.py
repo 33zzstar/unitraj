@@ -53,8 +53,9 @@ class BaseModel(pl.LightningModule):
         self.compute_official_evaluation(batch, prediction)
         self.log_info(batch, batch_idx, prediction,loss_control, status='train')
         self.log('train/loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True, batch_size=len(batch['input_dict']['center_gt_trajs']))
-        wandb.log({'train/loss': loss.item()})
-        wandb.log({'train/ctrl_loss': loss_control.item()})
+        if not self.config.get('disable_wandb', False):
+            wandb.log({'train/loss': loss.item()})
+            wandb.log({'train/ctrl_loss': loss_control.item()})
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -65,12 +66,12 @@ class BaseModel(pl.LightningModule):
         # 使用 self.log 记录到 PyTorch Lightning
         self.log('val/loss', loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True, 
                 batch_size=len(batch['input_dict']['center_gt_trajs']))
-        
-        # 使用 wandb.log 记录，添加 epoch 信息
-        wandb.log({
-            'val/loss': loss.item(),
-            'epoch': self.current_epoch
-        })
+        if not self.config.get('disable_wandb', False):
+            # 使用 wandb.log 记录，添加 epoch 信息
+            wandb.log({
+                'val/loss': loss.item(),
+                'epoch': self.current_epoch
+            })
         return loss
 
     def on_validation_epoch_end(self):
@@ -335,33 +336,31 @@ class BaseModel(pl.LightningModule):
             self.log(status + "/" + k, v, on_step=False, on_epoch=True, sync_dist=True, batch_size=size_dict[k])
         # zzs
         # if self.local_rank == 0 and status == 'val':
-        # # if self.local_rank == 0 and status == 'val' and batch_idx == 0:
-        #   img,gt_his_traj,gt_fut_traj,gt_his_ctrl,gt_fut_ctrl = visualization.visualize_prediction(batch, prediction,model_cfg=self.model_cfg,)
+        if self.local_rank == 0 and status == 'val' and batch_idx == 0:
+          img,gt_his_traj,gt_fut_traj,gt_his_ctrl,gt_fut_ctrl = visualization.visualize_prediction(batch, prediction,model_cfg=self.model_cfg,)
         #   wandb.log({"prediction": [wandb.Image(img)]})
-        #   # 显示图像
+          # 显示图像
 
-        #   # 保存图像
-        #   img_save_path = "/data1/data_zzs/plt_sample/3_27.png"  # 你想要保存图像的路径
-        #   img.savefig(img_save_path)  # 保存图像
 
-        if status == 'train':
-            metrics_dict = {
-                'train/minADE6': loss_dict.get('minADE6', 0),
-                'train/minFDE6': loss_dict.get('minFDE6', 0),
-                'train/miss_rate': loss_dict.get('miss_rate', 0),
-                'train/nuscenes/brier_fde': loss_dict.get('brier_fde', 0),
-                'epoch': self.current_epoch
-            }
-            wandb.log(metrics_dict)
-            
-        elif status == 'val':
-            metrics_dict = {
-                'val/minADE6': loss_dict.get('minADE6', 0),
-                'val/minFDE6': loss_dict.get('minFDE6', 0),
-                'val/miss_rate': loss_dict.get('miss_rate', 0),
-                'val/nuscenes/brier_fde': loss_dict.get('brier_fde', 0),
-                'epoch': self.current_epoch
-            }
-            wandb.log(metrics_dict)
+        if not self.disable_wandb:
+            if status == 'train':
+                metrics_dict = {
+                    'train/minADE6': loss_dict.get('minADE6', 0),
+                    'train/minFDE6': loss_dict.get('minFDE6', 0),
+                    'train/miss_rate': loss_dict.get('miss_rate', 0),
+                    'train/nuscenes/brier_fde': loss_dict.get('brier_fde', 0),
+                    'epoch': self.current_epoch
+                }
+                wandb.log(metrics_dict)
+                
+            elif status == 'val':
+                metrics_dict = {
+                    'val/minADE6': loss_dict.get('minADE6', 0),
+                    'val/minFDE6': loss_dict.get('minFDE6', 0),
+                    'val/miss_rate': loss_dict.get('miss_rate', 0),
+                    'val/nuscenes/brier_fde': loss_dict.get('brier_fde', 0),
+                    'epoch': self.current_epoch
+                }
+                wandb.log(metrics_dict)
 
         return
